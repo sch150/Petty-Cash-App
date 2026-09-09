@@ -733,6 +733,7 @@ function renderWorkingBatchBar(){
         <button type="button" class="btn btn-ghost btn-sm" data-action="use-working-batch">Use Selected Batch</button>
       ` : ''}
       <button type="button" class="btn btn-gold btn-sm" data-action="start-new-batch">+ Start New Batch</button>
+      ${can('batch.register-custom') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="open-register-batch">Register an existing batch number</button>` : ''}
     </div>
   </div>`;
 }
@@ -783,6 +784,7 @@ function can(perm){
     'batch.review': ['Admin','Reviewer/Approver'],
     'batch.post': ['Admin'],
     'reimbursement.record': ['Admin','Petty Cashier'],
+    'batch.register-custom': ['Admin'],
     'cashcount.create': ['Admin','Petty Cashier'],
     'reimb.create': ['Admin','Petty Cashier'],
     'reimb.review': ['Admin','Reviewer/Approver'],
@@ -1971,7 +1973,38 @@ function renderModal(){
   if(m.type === 'reimbursement') return renderReimbursementModal(m);
   if(m.type === 'import-accounts') return renderImportAccountsModal();
   if(m.type === 'upload-txn') return renderUploadTxnModal();
+  if(m.type === 'register-batch') return renderRegisterBatchModal();
   return '';
+}
+function renderRegisterBatchModal(){
+  const today = new Date().toISOString().slice(0,10);
+  return `
+  <div class="modal-overlay" data-close-modal>
+    <div class="modal" data-stop>
+      <div class="modal-head">
+        <h3>Register an Existing Batch Number</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <form id="registerBatchForm">
+        <div class="modal-body">
+          <div class="note-box" style="margin-bottom:14px;">Use this only when a batch number was already started outside the app's normal numbering (e.g. on paper, or before this system was in use). It won't affect the next auto-generated batch number.</div>
+          <div class="field"><label>Batch Number</label>
+            <input type="text" name="batchNumber" placeholder="e.g. PC-BATB012" required>
+          </div>
+          <div class="field"><label>Batch Date</label>
+            <input type="date" name="batchDate" value="${today}" required>
+          </div>
+          <div class="field"><label>Remarks (optional)</label>
+            <input type="text" name="remarks" placeholder="e.g. Started manually before batch numbering was standardized">
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+          <button type="submit" class="btn btn-gold">Register &amp; Use as Working Batch</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
 }
 function renderUploadTxnModal(){
   const b = activeBatch();
@@ -2300,6 +2333,42 @@ function bindShell(){
     State.activeBatchNumber = batchNumber;
     render();
   }));
+
+  document.querySelectorAll('[data-action="open-register-batch"]').forEach(b=>b.addEventListener('click', ()=>{
+    State.modal = {type:'register-batch'};
+    render();
+  }));
+  const registerBatchForm = document.getElementById('registerBatchForm');
+  if(registerBatchForm){
+    registerBatchForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(registerBatchForm);
+      const batchNumber = fd.get('batchNumber').trim();
+      const batchDate = fd.get('batchDate');
+      const remarks = fd.get('remarks').trim();
+      if(!batchNumber){ alert('Enter a batch number.'); return; }
+      if(State.batches.some(b=>b.batchNumber===batchNumber)){ alert(`Batch ${batchNumber} already exists in the system.`); return; }
+      const nb = {
+        batchNumber, batchDate,
+        preparedBy: State.currentUser.fullName, preparedById: State.currentUser.id,
+        numTransactions:0, totalAmount:0, status:'DRAFT',
+        reviewedBy:'', approvedBy:'', postingDate:'', accountingReference:'', postedBy:'',
+        remarks: remarks || 'Registered manually — started outside the app\'s auto-numbering.',
+      };
+      State.batches.push(nb);
+      const ok = await storeSet(K.batches, State.batches);
+      if(!ok){
+        State.batches.pop();
+        alert(`⚠️ Could not confirm this batch was saved (${ConnectionState.lastError}). Nothing was created — check your connection and try again.`);
+        render();
+        return;
+      }
+      await logAudit('Batch registered manually', '—', `${batchNumber} (${batchDate})`, remarks);
+      State.activeBatchNumber = batchNumber;
+      State.modal = null;
+      render();
+    });
+  }
 
   // ---- reimbursement received ----
   document.querySelectorAll('[data-action="new-reimbursement"]').forEach(b=>b.addEventListener('click', ()=>{
