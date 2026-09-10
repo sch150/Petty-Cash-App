@@ -468,7 +468,7 @@ function jsonpRequest(params){
       clearTimeout(timer);
     };
     window[cbName] = (data)=>{ done = true; cleanup(); resolve(data); };
-    const timer = setTimeout(()=>{ if(!done){ cleanup(); reject(new Error('Request timed out')); } }, 15000);
+    const timer = setTimeout(()=>{ if(!done){ cleanup(); reject(new Error('Request timed out')); } }, 25000);
     script.onerror = ()=>{ if(!done){ cleanup(); reject(new Error('Could not reach backend')); } };
     const qs = new URLSearchParams({ ...params, token: BACKEND.token, callback: cbName }).toString();
     script.src = BACKEND.url + '?' + qs;
