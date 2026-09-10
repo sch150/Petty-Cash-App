@@ -2447,6 +2447,25 @@ function bindShell(){
   // ---- ledger: multi-row save (existing edited rows + trailing new row) ----
   const ledgerForm = document.getElementById('ledgerForm');
   if(ledgerForm){
+    // Enter should feel like Excel: move to the next field in the row, and
+    // only actually save once you're on the last field. Previously Enter in
+    // ANY field instantly submitted the whole form and redrew the table,
+    // which could wipe out a row you hadn't finished typing yet.
+    ledgerForm.addEventListener('keydown', (e)=>{
+      if(e.key !== 'Enter') return;
+      const el = e.target;
+      if(el.tagName !== 'INPUT' && el.tagName !== 'SELECT') return;
+      e.preventDefault();
+      const row = el.closest('tr');
+      if(!row) return;
+      const fields = Array.from(row.querySelectorAll('input, select'));
+      const idx = fields.indexOf(el);
+      if(idx > -1 && idx < fields.length - 1){
+        fields[idx+1].focus();
+      } else {
+        ledgerForm.requestSubmit();
+      }
+    });
     ledgerForm.addEventListener('submit', async (e)=>{
       e.preventDefault();
       let touched = false;
