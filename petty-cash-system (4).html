@@ -2024,23 +2024,58 @@ function formatDateUTC(d){
 /* Parses rows from an uploaded Excel/CSV file (array-of-arrays from SheetJS'
    sheet_to_json with header:1). Cell values may be native types (Date
    objects, numbers) rather than plain text, unlike the pasted-CSV path. */
+const TXN_HEADER_ALIASES = {
+  date: ['date'],
+  recipient: ['recipient','recipient name','payee'],
+  description: ['description','description or purpose for payment','purpose'],
+  department: ['department','dept'],
+  accountCode: ['account code','accountcode','expense account'],
+  voucher: ['voucher','voucher no','voucher no.','voucher serial no','voucher serial no.','voucher serial number'],
+  amount: ['amount','paid amount','amount paid'],
+};
+function normalizeHeader(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' ').replace(/\.$/,''); }
+/* Maps a header row to column indices by name, so uploads work whether the
+   file is the simple template or a full Reports export (extra columns like
+   Txn ID, Account Name, Batch, Status, User are simply ignored). */
+function mapTxnHeaders(headerRow){
+  const normalized = (headerRow||[]).map(normalizeHeader);
+  const map = {};
+  for(const field in TXN_HEADER_ALIASES){
+    for(const alias of TXN_HEADER_ALIASES[field]){
+      const idx = normalized.indexOf(alias);
+      if(idx !== -1){ map[field] = idx; break; }
+    }
+  }
+  return map;
+}
 function parseTransactionRows(rowsRaw){
   if(!rowsRaw || rowsRaw.length===0) return { rows:[], errors:[] };
+
+  // Try to detect a real header row by name; fall back to the original
+  // fixed column order (Date, Recipient, Description, Department,
+  // Account Code, Voucher, Amount) if no recognizable headers are found.
+  let colMap = mapTxnHeaders(rowsRaw[0]);
   let start = 0;
-  const firstRow = (rowsRaw[0]||[]).map(c=>String(c).trim().toLowerCase());
-  if(firstRow[0]==='date') start = 1; // skip header row if present
+  const looksLikeHeader = colMap.date!==undefined && colMap.accountCode!==undefined && colMap.amount!==undefined;
+  if(looksLikeHeader){
+    start = 1;
+  } else {
+    colMap = { date:0, recipient:1, description:2, department:3, accountCode:4, voucher:5, amount:6 };
+  }
+
   const rows = [], errors = [];
   for(let i=start;i<rowsRaw.length;i++){
     const r = rowsRaw[i];
     const lineNo = i+1;
     if(!r || r.every(c=>c==='' || c===null || c===undefined)) continue; // skip blank rows
-    const rawDate = r[0];
-    const recipient = String(r[1]||'').trim();
-    const description = String(r[2]||'').trim();
-    const department = String(r[3]||'').trim();
-    const accountCode = String(r[4]||'').trim();
-    const voucher = String(r[5]||'').trim();
-    const rawAmount = r[6];
+    const get = (field)=> colMap[field]!==undefined ? r[colMap[field]] : '';
+    const rawDate = get('date');
+    const recipient = String(get('recipient')||'').trim();
+    const description = String(get('description')||'').trim();
+    const department = String(get('department')||'').trim();
+    const accountCode = String(get('accountCode')||'').trim();
+    const voucher = String(get('voucher')||'').trim();
+    const rawAmount = get('amount');
 
     let date = null;
     if(rawDate instanceof Date && !isNaN(rawDate)) date = formatDateUTC(rawDate);
@@ -2200,7 +2235,7 @@ function renderUploadTxnModal(){
         <div class="field">
           <label>Excel or CSV file</label>
           <input type="file" id="txnFileInput" accept=".xlsx,.xls,.csv">
-          <div class="hint">Columns (any order won't work — keep this exact order): Date, Recipient, Description, Department, Account Code, Voucher, Amount. Date as YYYY-MM-DD or DD/MM/YYYY. Account Code must match an existing, active Account Master code exactly. Department and Voucher may be left blank.</div>
+          <div class="hint">Works with the template below, or a file exported straight from Reports — the app reads columns by name, so extra columns like Txn ID, Account Name, Batch, Status, or User are simply ignored. Required: Date, Account Code, Amount. Date as YYYY-MM-DD or DD/MM/YYYY. Account Code must match an existing, active Account Master code exactly.</div>
         </div>
         <div id="uploadTxnStatus" style="margin-top:10px;font-size:13px;color:var(--text-muted);"></div>
       </div>
