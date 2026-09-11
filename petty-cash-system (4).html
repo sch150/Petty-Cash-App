@@ -738,13 +738,16 @@ function groupByAccount(txns){
 }
 function txnEditable(t){
   if(t.type==='REIMBURSEMENT') return false;
-  if(t.status!=='DRAFT') return false;
+  if(t.status==='VOIDED') return false;
   if(!can('txn.create')) return false;
   const owner = State.currentUser.role==='Admin' || t.userId===State.currentUser.id;
   if(!owner) return false;
-  if(t.batchNumber){
-    const b = State.batches.find(x=>x.batchNumber===t.batchNumber);
-    if(b && b.status!=='DRAFT') return false;
+  // Editable all the way through batch submission, review and posting — only
+  // locked once the reimbursement covering it has actually been paid.
+  // Admins can still make corrections even after that point if truly needed.
+  if(State.currentUser.role!=='Admin' && t.reimbursementId){
+    const r = State.reimbursements.find(x=>x.id===t.reimbursementId);
+    if(r && r.status==='PAID') return false;
   }
   return true;
 }
@@ -2960,7 +2963,13 @@ function bindShell(){
     const acc = State.accounts.find(a=>a.code===code);
     const oldVal = acc.active ? 'ACTIVE' : 'INACTIVE';
     acc.active = !acc.active;
-    await storeSet(K.accounts, State.accounts);
+    const ok = await storeSet(K.accounts, State.accounts);
+    if(!ok){
+      acc.active = !acc.active; // roll back
+      alert(`⚠️ Could not confirm this change was saved (${ConnectionState.lastError}). Try again.`);
+      render();
+      return;
+    }
     await logAudit('Account code status changed', oldVal, acc.active?'ACTIVE':'INACTIVE', `Code ${code}`);
     render();
   }));
@@ -2977,6 +2986,7 @@ function bindShell(){
       try{ parsed = parseAccountsCSV(raw); }
       catch(err){ alert('Could not read that CSV: ' + err.message); return; }
       if(parsed.length===0){ alert('No account rows found.'); return; }
+      const before = JSON.parse(JSON.stringify(State.accounts));
       let added=0, updated=0;
       parsed.forEach(row=>{
         const existing = State.accounts.find(a=>a.code===row.code);
@@ -2990,10 +3000,16 @@ function bindShell(){
           added++;
         }
       });
-      await storeSet(K.accounts, State.accounts);
+      const ok = await storeSet(K.accounts, State.accounts);
+      if(!ok){
+        State.accounts = before; // roll back — the import never actually saved
+        alert(`⚠️ Could not confirm this import was saved (${ConnectionState.lastError}). Nothing was changed — check your connection and try again.`);
+        render();
+        return;
+      }
       await logAudit('Chart of Accounts imported', '—', `${added} added, ${updated} updated`);
       State.modal = null;
-      alert(`Import complete: ${added} new account(s) added, ${updated} existing account(s) updated.`);
+      alert(`Import confirmed and saved: ${added} new account(s) added, ${updated} existing account(s) updated.`);
       render();
     });
   }
@@ -3154,8 +3170,15 @@ function bindShell(){
       if(String(before.pettyCash.reimbursementThreshold) !== String(State.settings.pettyCash.reimbursementThreshold)){
         await logAudit('Reimbursement threshold changed', fmtGHS(before.pettyCash.reimbursementThreshold), fmtGHS(State.settings.pettyCash.reimbursementThreshold));
       }
-      await storeSet(K.settings, State.settings);
+      const ok = await storeSet(K.settings, State.settings);
+      if(!ok){
+        State.settings = before; // roll back — nothing was actually saved
+        alert(`⚠️ Could not confirm these settings were saved (${ConnectionState.lastError}). Nothing was changed — check your connection and try again.`);
+        render();
+        return;
+      }
       await logAudit('Settings updated', '—', State.activeTab.settings + ' tab');
+      alert('Settings confirmed and saved.');
       render();
     });
   }
@@ -3178,14 +3201,26 @@ function bindShell(){
       if(State.modal.mode === 'new'){
         if(State.accounts.some(a=>a.code===code)){ alert('That account code already exists.'); return; }
         State.accounts.push({code, name, category, active:true});
-        await storeSet(K.accounts, State.accounts);
+        const ok = await storeSet(K.accounts, State.accounts);
+        if(!ok){
+          State.accounts.pop();
+          alert(`⚠️ Could not confirm this account was saved (${ConnectionState.lastError}). Nothing was created — try again.`);
+          render();
+          return;
+        }
         await logAudit('Account code created', '—', `${code} — ${name}`);
       } else {
         const acc = State.accounts.find(a=>a.code===code);
-        const oldName = acc.name;
+        const oldName = acc.name, oldCategory = acc.category;
         acc.name = name;
         acc.category = category;
-        await storeSet(K.accounts, State.accounts);
+        const ok = await storeSet(K.accounts, State.accounts);
+        if(!ok){
+          acc.name = oldName; acc.category = oldCategory;
+          alert(`⚠️ Could not confirm these changes were saved (${ConnectionState.lastError}). Nothing was changed — try again.`);
+          render();
+          return;
+        }
         if(oldName !== name) await logAudit('Account code changed', oldName, name, `Code ${code}`);
       }
       State.modal = null;
