@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5/build/index.umd.min.js"></script>
 <style>
   :root{
     --ink:#1B2430;
@@ -597,8 +599,8 @@ const DEMO_SEED = {
     {code:'32002-2', name:'Vehicle Fuel', category:'32002-FUEL AND LUBRICANTS', active:true},
   ],
   settings: ()=>({
-    company:{ name:'Your Company Ltd', address:'', phone:'', email:'', currency:'GHS' },
-    pettyCash:{ approvedFloat:20000, reimbursementThreshold:5000, minReimbursement:0, maxReimbursement:0, cashCountTolerance:0 },
+    company:{ name:'Your Company Ltd', address:'', phone:'', email:'', currency:'GHS', logoDataUrl:null, logoW:null, logoH:null },
+    pettyCash:{ approvedFloat:20000, reimbursementThreshold:5000, minReimbursement:0, maxReimbursement:0, cashCountTolerance:10 },
     numbering:{ txnPrefix:'PC-TXN', batchPrefix:'HQ_PettyCash_', reimbPrefix:'PC-REIM', cashCountPrefix:'PC-CC', nextTxnSeq:1, nextBatchSeq:1, nextReimbSeq:1, nextCashCountSeq:1 },
     security:{ minPasswordLength:8, requireComplexity:true, sessionTimeoutMinutes:30 },
     pettyCashAccountCode:'PC-100',
@@ -832,7 +834,7 @@ function can(perm){
     'accounts.edit': ['Admin'],
     'users.manage': ['Admin'],
     'settings.edit': ['Admin'],
-    'audit.view': ['Admin'],
+    'audit.view': ['Admin','Head of Finance'],
     'txn.create': ['Admin','Petty Cashier'],
     'txn.void': ['Admin'],
     'batch.create': ['Admin','Petty Cashier'],
@@ -843,7 +845,7 @@ function can(perm){
     'cashcount.create': ['Admin','Petty Cashier'],
     'reimb.create': ['Admin','Petty Cashier'],
     'reimb.review': ['Admin','Reviewer/Approver'],
-    'reimb.pay': ['Admin'],
+    'reimb.pay': ['Admin','Head of Finance'],
   };
   if(!table[perm]) return true;
   return table[perm].includes(role);
@@ -964,6 +966,7 @@ function renderLogin(){
   return `
   <div class="login-wrap">
     <div class="login-card">
+      ${State.settings.company.logoDataUrl ? `<img src="${State.settings.company.logoDataUrl}" style="max-width:180px;max-height:64px;margin-bottom:14px;display:block;">` : ''}
       <div class="login-mark">PETTY CASH SUB-LEDGER</div>
       <h1 class="login-title">Sign in</h1>
       <p class="login-sub">Petty Cash Management, Control &amp; Batch Posting Workbook</p>
@@ -1063,6 +1066,7 @@ function renderShell(){
   <div class="shell">
     <div class="sidebar">
       <div class="brand">
+        ${State.settings.company.logoDataUrl ? `<img src="${State.settings.company.logoDataUrl}" style="max-width:150px;max-height:52px;margin-bottom:10px;display:block;">` : ''}
         <div class="brand-name">${escapeHtml(State.settings.company.name || 'Petty Cash System')}</div>
         <div class="brand-tag">SUB-LEDGER &amp; CONTROL</div>
       </div>
@@ -1318,6 +1322,13 @@ function renderSettings(){
           <div class="field full"><label>Address</label><input type="text" name="company.address" value="${escapeAttr(s.company.address)}"></div>
           <div class="field"><label>Telephone</label><input type="text" name="company.phone" value="${escapeAttr(s.company.phone)}"></div>
           <div class="field"><label>Email</label><input type="text" name="company.email" value="${escapeAttr(s.company.email)}"></div>
+          <div class="field full">
+            <label>Logo</label>
+            ${s.company.logoDataUrl ? `<div style="margin-bottom:10px;"><img src="${s.company.logoDataUrl}" style="max-width:180px;max-height:70px;border:1px solid var(--line);padding:6px;background:var(--paper-2);"></div>` : ''}
+            <input type="file" id="logoFileInput" name="company.logoFile" accept="image/*">
+            <div class="hint">Appears in the sidebar, login screen, and at the top of the Reimbursement PDF/Word document. Automatically resized — any reasonable image works.</div>
+            ${s.company.logoDataUrl ? `<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;font-weight:400;color:var(--text-muted);"><input type="checkbox" name="company.removeLogo" style="width:auto;"> Remove current logo</label>` : ''}
+          </div>
         </div>
       ` : ''}
       ${tab==='pettycash' ? `
@@ -1596,6 +1607,13 @@ function renderViewBatches(){
   </div>
   `;
 }
+function batchLockedByReimbursement(batchNumber){
+  const txnIds = State.transactions.filter(t=>t.batchNumber===batchNumber).map(t=>t.reimbursementId).filter(Boolean);
+  return txnIds.some(rid => {
+    const r = State.reimbursements.find(x=>x.id===rid);
+    return r && r.status==='PAID';
+  });
+}
 function batchActionButtons(b){
   const btns = [];
   const isOwner = State.currentUser.role==='Admin' || b.preparedById===State.currentUser.id;
@@ -1611,6 +1629,9 @@ function batchActionButtons(b){
   }
   if(b.numTransactions>0){
     btns.push(`<button class="btn btn-ghost btn-sm" data-action="view-posting" data-batch="${escapeAttr(b.batchNumber)}">Posting Summary</button>`);
+  }
+  if(b.numTransactions>0 && isOwner && can('txn.create') && !batchLockedByReimbursement(b.batchNumber)){
+    btns.push(`<button class="btn btn-ghost btn-sm" data-action="clear-batch" data-batch="${escapeAttr(b.batchNumber)}" style="color:var(--red);">Clear &amp; Re-upload</button>`);
   }
   return btns.join('');
 }
@@ -1719,8 +1740,8 @@ function renderCashCount(){
         <tfoot><tr><td colspan="2" style="text-align:right;font-weight:600;padding:10px;">Counted Total</td><td style="text-align:right;font-weight:600;padding:10px;" id="denomGrandTotal">${fmtGHS(0)}</td></tr></tfoot>
       </table>
       <div class="field" style="max-width:520px;margin-top:14px;">
-        <label>Remarks (required if there's a variance beyond tolerance)</label>
-        <input type="text" name="remarks" placeholder="Explain any shortfall/excess">
+        <label>Remarks (required)</label>
+        <input type="text" name="remarks" placeholder="e.g. Good — if balanced within tolerance, or explain any shortfall/excess" required>
       </div>
       <div style="margin-top:16px;"><button type="submit" class="btn btn-gold">Save Cash Count</button></div>
     </form>
@@ -1752,12 +1773,291 @@ function renderCashCount(){
 function eligibleForReimbursement(){
   return State.transactions.filter(t => t.type==='EXPENSE' && t.status!=='VOIDED' && !t.reimbursementId);
 }
+/* The actual amount to be paid out — normally equal to Amount Spent, but can
+   be netted down (or up) by a one-time adjustment, e.g. resetting the float
+   to a new target amount. */
+function reimbursementNetAmount(r){
+  return Number(r.totalAmount||0) - Number(r.adjustmentAmount||0);
+}
+function truncateText(s, n){ s = String(s||''); return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+function generateReimbursementPDF(r){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = 48;
+  let y = margin;
+  const co = State.settings.company;
+  const items = State.transactions.filter(t=>t.reimbursementId===r.id);
+  const c = latestCashCount();
+  const { currentBalance } = computeLedger();
+  const cashOnHand = c ? c.totalCounted : currentBalance;
+  const float = State.settings.pettyCash.approvedFloat;
+  const amountSpent = r.totalAmount;
+
+  function header(title){
+    if(co.logoDataUrl && co.logoW && co.logoH){
+      const maxW = 90, maxH = 34;
+      const scale = Math.min(maxW/co.logoW, maxH/co.logoH, 1);
+      const w = co.logoW*scale, h = co.logoH*scale;
+      try{ doc.addImage(co.logoDataUrl, 'PNG', pageW-margin-w, margin-10, w, h); }catch(e){ /* ignore malformed image */ }
+    }
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(0);
+    doc.text(co.name || 'Petty Cash', margin, y); y += 18;
+    const addrLine = [co.address, co.phone].filter(Boolean).join('   ·   ');
+    if(addrLine){
+      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90);
+      doc.text(addrLine, margin, y); y += 16;
+    }
+    doc.setTextColor(0);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text(title, pageW/2, y, { align:'center' });
+    y += 10;
+    doc.setLineWidth(0.7); doc.line(margin, y, pageW-margin, y);
+    y += 24;
+  }
+  function labelValueRow(label, value){
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text(label, margin, y);
+    doc.setFont('helvetica','normal');
+    doc.text(String(value), margin+230, y);
+    y += 20;
+  }
+  function signLine(label, name){
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, margin+230, y);
+    doc.line(margin+280, y, margin+440, y);
+    y += 12;
+    doc.setFontSize(9); doc.setFont('helvetica','normal');
+    doc.text(label + (name ? ': ' + name : ''), margin, y);
+    doc.text('Date', margin+280, y);
+    y += 30;
+  }
+
+  // ---- PAGE 1: SUMMARY ----
+  header('PETTY CASH REIMBURSEMENT — SUMMARY');
+  labelValueRow('Request No.:', r.id);
+  labelValueRow('Request Date:', r.requestDate);
+  labelValueRow('Period Covered:', `${r.periodFrom} to ${r.periodTo}`);
+  y += 8;
+  doc.setLineWidth(0.4); doc.line(margin, y, pageW-margin, y); y += 22;
+
+  labelValueRow('Float Amount:', fmtGHS(float));
+  labelValueRow('Amount Spent:', fmtGHS(amountSpent));
+  labelValueRow('Cash on Hand:', fmtGHS(cashOnHand));
+  if(r.adjustmentAmount){
+    labelValueRow('Adjustment:', `-${fmtGHS(r.adjustmentAmount)}${r.adjustmentReason?' — '+r.adjustmentReason:''}`);
+  }
+  labelValueRow('Reimbursement Amount:', fmtGHS(reimbursementNetAmount(r)));
+  y += 22;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.text('Sign-off', margin, y); y += 26;
+
+  signLine('Petty Cashier Name', r.requestedBy);
+  signLine('Reviewer Name', r.reviewedBy || '');
+  signLine('Head of Finance Approval', r.paidBy || '');
+  signLine('Managing Director Approval', '');
+
+  doc.setFontSize(8); doc.setTextColor(130);
+  doc.text(`Generated ${nowParts().date} ${nowParts().time}`, margin, 800);
+  doc.setTextColor(0);
+
+  // ---- PAGE 2: EXPENSES ----
+  doc.addPage();
+  y = margin;
+  header('EXPENSE DETAIL');
+  const colX = [margin, margin+55, margin+165, margin+340, margin+430];
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  doc.text('Date', colX[0], y);
+  doc.text('Recipient', colX[1], y);
+  doc.text('Description', colX[2], y);
+  doc.text('Voucher', colX[3], y);
+  doc.text('Amount', pageW-margin, y, { align:'right' });
+  y += 6;
+  doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 14;
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  items.forEach(t=>{
+    if(y > 780){ doc.addPage(); y = margin; }
+    doc.text(String(t.date), colX[0], y);
+    doc.text(truncateText(t.recipient,20), colX[1], y);
+    doc.text(truncateText(t.description,28), colX[2], y);
+    doc.text(String(t.voucher||'—'), colX[3], y);
+    doc.text(fmtGHS(t.amount), pageW-margin, y, { align:'right' });
+    y += 14;
+  });
+  y += 6; doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 18;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('Amount Spent', colX[2], y);
+  doc.text(fmtGHS(amountSpent), pageW-margin, y, { align:'right' });
+  if(r.adjustmentAmount){
+    y += 16;
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.text(`Adjustment${r.adjustmentReason?' — '+r.adjustmentReason:''}`, colX[2], y);
+    doc.text(`-${fmtGHS(r.adjustmentAmount)}`, pageW-margin, y, { align:'right' });
+    y += 16;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text('Reimbursement Amount', colX[2], y);
+    doc.text(fmtGHS(reimbursementNetAmount(r)), pageW-margin, y, { align:'right' });
+  }
+
+  // ---- PAGE 3: CASH COUNT SUMMARY ----
+  doc.addPage();
+  y = margin;
+  header('CASH COUNT SUMMARY');
+  if(c){
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.text(`Counted by ${c.countedBy} on ${c.date} ${c.time}`, margin, y); y += 22;
+    doc.setFont('helvetica','bold');
+    doc.text('Denomination', margin, y);
+    doc.text('Qty', margin+240, y);
+    doc.text('Amount', pageW-margin, y, { align:'right' });
+    y += 6; doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 14;
+    doc.setFont('helvetica','normal');
+    DENOMINATIONS.forEach(d=>{
+      const qty = (c.denominations && c.denominations[d.value]) || 0;
+      if(qty<=0) return;
+      doc.text(d.label, margin, y);
+      doc.text(String(qty), margin+240, y);
+      doc.text(fmtGHS(d.value*qty), pageW-margin, y, { align:'right' });
+      y += 14;
+    });
+    y += 6; doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 18;
+    doc.setFont('helvetica','bold');
+    doc.text('Total Counted', margin, y); doc.text(fmtGHS(c.totalCounted), pageW-margin, y, { align:'right' }); y += 16;
+    doc.setFont('helvetica','normal');
+    doc.text('System Balance (at time of count)', margin, y); doc.text(fmtGHS(c.systemBalance), pageW-margin, y, { align:'right' }); y += 16;
+    doc.text('Variance', margin, y); doc.text(fmtGHS(c.variance), pageW-margin, y, { align:'right' }); y += 16;
+    if(c.remarks){ y += 10; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.text(`Remarks: ${c.remarks}`, margin, y); }
+  } else {
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('No cash count on file.', margin, y);
+  }
+
+  doc.save(`${r.id}-Reimbursement-Authorization.pdf`);
+}
+
+async function generateReimbursementDocx(r){
+  const { Document, Paragraph, TextRun, Table, TableRow, TableCell, AlignmentType, WidthType, PageBreak, Packer, BorderStyle } = window.docx;
+  const co = State.settings.company;
+  const items = State.transactions.filter(t=>t.reimbursementId===r.id);
+  const c = latestCashCount();
+  const { currentBalance } = computeLedger();
+  const cashOnHand = c ? c.totalCounted : currentBalance;
+  const float = State.settings.pettyCash.approvedFloat;
+  const amountSpent = r.totalAmount;
+  const net = reimbursementNetAmount(r);
+
+  function p(text, opts={}){
+    return new Paragraph({ children:[new TextRun({text:String(text), bold:!!opts.bold, italics:!!opts.italics, size:opts.size||20})], spacing:{after:opts.after??120}, alignment:opts.align });
+  }
+  function labelRow(label, value){
+    return new Paragraph({ children:[ new TextRun({text:label+'  ', bold:true, size:20}), new TextRun({text:String(value), size:20}) ], spacing:{after:100} });
+  }
+  function cell(text, opts={}){
+    return new TableCell({ children:[new Paragraph({children:[new TextRun({text:String(text), bold:!!opts.bold, size:18})]})] });
+  }
+  function table(headers, rows){
+    return new Table({
+      width:{size:100, type:WidthType.PERCENTAGE},
+      rows:[
+        new TableRow({ children: headers.map(h=>cell(h,{bold:true})) }),
+        ...rows.map(row=>new TableRow({ children: row.map(v=>cell(v)) })),
+      ],
+    });
+  }
+  function signBlock(label, name){
+    return [
+      p('_____________________________               _____________________________', {after:60}),
+      p(`${label}${name?': '+name:''}` + '                              Date', {size:18, after:260}),
+    ];
+  }
+
+  const children = [];
+
+  // ---- PAGE 1: SUMMARY ----
+  children.push(new Paragraph({ children:[new TextRun({text:co.name||'Petty Cash', bold:true, size:28})], spacing:{after:60} }));
+  if(co.address||co.phone) children.push(p([co.address,co.phone].filter(Boolean).join('   ·   '), {italics:true, size:18, after:160}));
+  children.push(new Paragraph({ children:[new TextRun({text:'PETTY CASH REIMBURSEMENT — SUMMARY', bold:true, size:26})], alignment:AlignmentType.CENTER, spacing:{after:300} }));
+
+  children.push(labelRow('Request No.:', r.id));
+  children.push(labelRow('Request Date:', r.requestDate));
+  children.push(labelRow('Period Covered:', `${r.periodFrom} to ${r.periodTo}`));
+  children.push(p('', {after:160}));
+
+  children.push(labelRow('Float Amount:', fmtGHS(float)));
+  children.push(labelRow('Amount Spent:', fmtGHS(amountSpent)));
+  children.push(labelRow('Cash on Hand:', fmtGHS(cashOnHand)));
+  if(r.adjustmentAmount){
+    children.push(labelRow('Adjustment:', `-${fmtGHS(r.adjustmentAmount)}${r.adjustmentReason?' — '+r.adjustmentReason:''}`));
+  }
+  children.push(labelRow('Reimbursement Amount:', fmtGHS(net)));
+  children.push(p('', {after:260}));
+
+  children.push(new Paragraph({ children:[new TextRun({text:'Sign-off', bold:true, size:24})], spacing:{after:200} }));
+  children.push(...signBlock('Petty Cashier Name', r.requestedBy));
+  children.push(...signBlock('Reviewer Name', r.reviewedBy||''));
+  children.push(...signBlock('Head of Finance Approval', r.paidBy||''));
+  children.push(...signBlock('Managing Director Approval', ''));
+  children.push(p(`Generated ${nowParts().date} ${nowParts().time}`, {size:14, italics:true}));
+
+  // ---- PAGE 2: EXPENSES ----
+  children.push(new Paragraph({ children:[new PageBreak()] }));
+  children.push(new Paragraph({ children:[new TextRun({text:co.name||'Petty Cash', bold:true, size:22})], spacing:{after:60} }));
+  children.push(new Paragraph({ children:[new TextRun({text:'EXPENSE DETAIL', bold:true, size:24})], alignment:AlignmentType.CENTER, spacing:{after:260} }));
+  children.push(table(
+    ['Date','Recipient','Description','Voucher','Amount'],
+    items.map(t=>[t.date, t.recipient, t.description, t.voucher||'—', fmtGHS(t.amount)])
+  ));
+  children.push(p('', {after:160}));
+  children.push(labelRow('Amount Spent:', fmtGHS(amountSpent)));
+  if(r.adjustmentAmount){
+    children.push(labelRow(`Adjustment${r.adjustmentReason?' — '+r.adjustmentReason:''}:`, `-${fmtGHS(r.adjustmentAmount)}`));
+    children.push(labelRow('Reimbursement Amount:', fmtGHS(net)));
+  }
+
+  // ---- PAGE 3: CASH COUNT SUMMARY ----
+  children.push(new Paragraph({ children:[new PageBreak()] }));
+  children.push(new Paragraph({ children:[new TextRun({text:co.name||'Petty Cash', bold:true, size:22})], spacing:{after:60} }));
+  children.push(new Paragraph({ children:[new TextRun({text:'CASH COUNT SUMMARY', bold:true, size:24})], alignment:AlignmentType.CENTER, spacing:{after:260} }));
+  if(c){
+    children.push(p(`Counted by ${c.countedBy} on ${c.date} ${c.time}`, {after:160}));
+    const denomRows = DENOMINATIONS
+      .filter(d=>(c.denominations && c.denominations[d.value]) > 0)
+      .map(d=>{ const qty = c.denominations[d.value]; return [d.label, String(qty), fmtGHS(d.value*qty)]; });
+    children.push(table(['Denomination','Qty','Amount'], denomRows));
+    children.push(p('', {after:160}));
+    children.push(labelRow('Total Counted:', fmtGHS(c.totalCounted)));
+    children.push(labelRow('System Balance (at time of count):', fmtGHS(c.systemBalance)));
+    children.push(labelRow('Variance:', fmtGHS(c.variance)));
+    if(c.remarks) children.push(p(`Remarks: ${c.remarks}`, {italics:true}));
+  } else {
+    children.push(p('No cash count on file.'));
+  }
+
+  const docx = new Document({ sections:[{ children }] });
+  const blob = await Packer.toBlob(docx);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${r.id}-Reimbursement-Authorization.docx`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function latestCashCount(){
   return State.cashCounts.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''))[0] || null;
 }
 function reconciliationReady(){
+  // Softened: submitting no longer requires a perfectly-balanced count — any
+  // cash count on file (with its required remark) is enough. The real
+  // control point is now the 10-cedis variance gate on printing/downloading
+  // the signed authorization document.
+  return !!latestCashCount();
+}
+function reimbursementPrintBlocked(){
   const c = latestCashCount();
-  return !!(c && c.withinTolerance);
+  if(!c) return true; // no cash count on file at all — nothing to base the document on
+  return Math.abs(c.variance) > 10;
 }
 function renderReimbursement(){
   const { currentBalance } = computeLedger();
@@ -1775,14 +2075,14 @@ function renderReimbursement(){
   return `
   <div class="page-head">
     <h1>Reimbursement</h1>
-    <p>Requests draw from unreimbursed transactions since the last payment, and require a reconciled cash count before they can be submitted for approval.</p>
+    <p>Requests draw from unreimbursed transactions since the last payment. A cash count on file is enough to submit — the signed authorization document can only be downloaded once the latest count is within GHS 10 of the system balance.</p>
   </div>
 
   <div class="stat-row">
     <div class="stat"><div class="label">Current Balance</div><div class="value" style="${belowThreshold?'color:var(--red);':''}">${fmtGHS(currentBalance)}</div></div>
     <div class="stat"><div class="label">Threshold</div><div class="value">${fmtGHS(threshold)}</div></div>
     <div class="stat"><div class="label">Unreimbursed (eligible)</div><div class="value">${fmtGHS(eligibleTotal)}</div><div class="sub">${eligible.length} transaction(s)</div></div>
-    <div class="stat"><div class="label">Reconciliation</div><div class="value" style="font-size:15px;">${reconciliationReady() ? `<span class="badge badge-green">READY</span>` : `<span class="badge badge-red">NOT RECONCILED</span>`}</div></div>
+    <div class="stat"><div class="label">Document Print Gate</div><div class="value" style="font-size:15px;">${reimbursementPrintBlocked() ? `<span class="badge badge-red">BLOCKED (variance &gt; GHS 10)</span>` : `<span class="badge badge-green">CLEAR</span>`}</div></div>
   </div>
 
   ${can('reimb.create') && !hasOpenDraft ? `
@@ -1797,9 +2097,14 @@ function renderReimbursement(){
   <div class="toolbar">
     <select id="reimbSelect" ${list.length===0?'disabled':''}>
       ${list.length===0 ? `<option>No reimbursement requests yet</option>` :
-        list.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===selectedId?'selected':''}>${escapeHtml(x.id)} — ${fmtGHS(x.totalAmount)} — ${x.status}</option>`).join('')}
+        list.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===selectedId?'selected':''}>${escapeHtml(x.id)} — ${fmtGHS(reimbursementNetAmount(x))} — ${x.status}</option>`).join('')}
     </select>
-    ${r && (r.status==='APPROVED'||r.status==='PAID') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="print-reimbursement" data-id="${escapeAttr(r.id)}">Print Authorization</button>` : ''}
+    ${r && (r.status==='APPROVED'||r.status==='PAID') ? (
+      reimbursementPrintBlocked()
+        ? `<span class="badge badge-red" style="align-self:center;">Variance &gt; GHS 10 — perform a fresh Cash Count to unlock the document</span>`
+        : `<button type="button" class="btn btn-ghost btn-sm" data-action="print-reimbursement" data-id="${escapeAttr(r.id)}">⬇ Download PDF</button>
+           <button type="button" class="btn btn-ghost btn-sm" data-action="download-reimbursement-docx" data-id="${escapeAttr(r.id)}">⬇ Download Word</button>`
+    ) : ''}
   </div>
 
   ${!r ? `<div class="banner banner-info">Create a reimbursement request to see it here.</div>` : renderReimbursementDetail(r)}
@@ -1808,6 +2113,8 @@ function renderReimbursement(){
 function renderReimbursementDetail(r){
   const items = State.transactions.filter(t=>t.reimbursementId===r.id);
   const isOwner = State.currentUser.role==='Admin' || r.requestedById===State.currentUser.id;
+  const net = reimbursementNetAmount(r);
+  const hasAdjustment = Number(r.adjustmentAmount||0) !== 0;
   return `
   <div class="panel">
     <div class="panel-head"><h2>${escapeHtml(r.id)}</h2>${statusBadge(r.status)}</div>
@@ -1816,46 +2123,64 @@ function renderReimbursementDetail(r){
         <div><b>Requested By:</b> ${escapeHtml(r.requestedBy)}</div>
         <div><b>Request Date:</b> ${r.requestDate}</div>
         <div><b>Period:</b> ${r.periodFrom} — ${r.periodTo}</div>
-        <div><b>Total Amount:</b> ${fmtGHS(r.totalAmount)}</div>
+        <div><b>Amount Spent:</b> ${fmtGHS(r.totalAmount)}</div>
         <div><b>Reviewed By:</b> ${escapeHtml(r.reviewedBy||'—')}</div>
         <div><b>Paid:</b> ${r.status==='PAID' ? `${r.paidDate} — Ref ${escapeHtml(r.paidRef||'')}` : '—'}</div>
+        ${hasAdjustment ? `<div><b>Adjustment:</b> -${fmtGHS(r.adjustmentAmount)} ${r.adjustmentReason?`(${escapeHtml(r.adjustmentReason)})`:''}</div>
+        <div><b>Reimbursement Amount:</b> ${fmtGHS(net)}</div>` : ''}
       </div>
       <table>
         <thead><tr><th>Date</th><th>Recipient</th><th>Account</th><th>Voucher</th><th style="text-align:right;">Amount</th></tr></thead>
         <tbody>
           ${items.map(t=>`<tr><td>${t.date}</td><td>${escapeHtml(t.recipient)}</td><td style="font-size:12.5px;">${escapeHtml(accountLabel({code:t.accountCode,name:t.accountName,category:t.accountCategory}))}</td><td class="mono">${escapeHtml(t.voucher||'—')}</td><td style="text-align:right;">${fmtGHS(t.amount)}</td></tr>`).join('')}
-          <tr><td colspan="4" style="text-align:right;font-weight:600;">Total</td><td style="text-align:right;font-weight:600;">${fmtGHS(r.totalAmount)}</td></tr>
+          <tr><td colspan="4" style="text-align:right;">Amount Spent</td><td style="text-align:right;">${fmtGHS(r.totalAmount)}</td></tr>
+          ${hasAdjustment ? `<tr><td colspan="4" style="text-align:right;">Adjustment${r.adjustmentReason?' — '+escapeHtml(r.adjustmentReason):''}</td><td style="text-align:right;">-${fmtGHS(r.adjustmentAmount)}</td></tr>` : ''}
+          <tr><td colspan="4" style="text-align:right;font-weight:600;">Reimbursement Amount</td><td style="text-align:right;font-weight:600;">${fmtGHS(net)}</td></tr>
         </tbody>
       </table>
       ${r.remarks ? `<div class="note-box" style="margin-top:12px;">Note: ${escapeHtml(r.remarks)}</div>` : ''}
     </div>
   </div>
 
+  ${r.status==='DRAFT' && isOwner && can('reimb.create') ? `
+  <div class="panel"><div class="panel-head"><h2>One-Time Adjustment (optional)</h2></div><div class="panel-body">
+    <div class="note-box" style="margin-bottom:14px;">Use this for a one-time deduction against this request — e.g. resetting the float to a new target amount. Leave at 0 for a normal reimbursement equal to Amount Spent.</div>
+    <form id="adjustmentForm" data-id="${escapeAttr(r.id)}">
+      <div class="form-grid">
+        <div class="field"><label>Adjustment Amount (GHS, deducted from Amount Spent)</label><input type="number" step="0.01" min="0" name="adjustmentAmount" value="${r.adjustmentAmount||0}"></div>
+        <div class="field"><label>Reason</label><input type="text" name="adjustmentReason" value="${escapeAttr(r.adjustmentReason||'')}" placeholder="e.g. Resetting float to GHS 50,000"></div>
+      </div>
+      <div style="margin-top:12px;"><button type="submit" class="btn btn-ghost">Save Adjustment</button></div>
+    </form>
+  </div></div>
+  ` : ''}
+
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
     ${r.status==='DRAFT' && isOwner && can('reimb.create') ? `
-      ${!reconciliationReady() ? `<div class="banner banner-info" style="width:100%;">A reconciled cash count is required before submitting. <span style="color:var(--gold);cursor:pointer;text-decoration:underline;" data-nav="cashcount">Go to Cash Count</span></div>` :
+      ${!reconciliationReady() ? `<div class="banner banner-info" style="width:100%;">Perform at least one Cash Count before submitting — any count is fine, it no longer needs to be perfectly balanced. <span style="color:var(--gold);cursor:pointer;text-decoration:underline;" data-nav="cashcount">Go to Cash Count</span></div>` :
       `<button type="button" class="btn btn-gold btn-sm" data-action="submit-reimbursement" data-id="${escapeAttr(r.id)}">Submit for Approval</button>`}
       <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-reimbursement" data-id="${escapeAttr(r.id)}">Cancel Request</button>
     ` : ''}
     ${r.status==='SUBMITTED' && can('reimb.review') ? `
-      <button type="button" class="btn btn-gold btn-sm" data-action="approve-reimbursement" data-id="${escapeAttr(r.id)}">Approve</button>
-      <button type="button" class="btn btn-ghost btn-sm" data-action="reject-reimbursement" data-id="${escapeAttr(r.id)}">Reject</button>
+      <button type="button" class="btn btn-gold btn-sm" data-action="approve-reimbursement" data-id="${escapeAttr(r.id)}">✓ Reconciled — Review Approved</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="reject-reimbursement" data-id="${escapeAttr(r.id)}">Return / Reject</button>
     ` : ''}
     ${r.status==='REJECTED' && isOwner ? `<button type="button" class="btn btn-ghost btn-sm" data-action="reopen-reimbursement" data-id="${escapeAttr(r.id)}">Reopen to Draft</button>` : ''}
   </div>
 
   ${r.status==='APPROVED' && can('reimb.pay') ? `
-  <div class="panel"><div class="panel-head"><h2>Record Payment</h2></div><div class="panel-body">
+  <div class="panel"><div class="panel-head"><h2>Head of Finance &amp; Admin — Sign-off &amp; Payment</h2></div><div class="panel-body">
+    <div class="note-box" style="margin-bottom:14px;">Reviewed and reconciled by ${escapeHtml(r.reviewedBy||'—')}. Recording payment here will credit the ledger with ${fmtGHS(net)}${hasAdjustment?' (net of the adjustment above)':''} and mark this request PAID.</div>
     <form id="reimbPayForm" data-id="${escapeAttr(r.id)}">
       <div class="form-grid">
         <div class="field"><label>Payment / Bank Reference</label><input type="text" name="paidRef" required></div>
         <div class="field"><label>Payment Date</label><input type="date" name="paidDate" value="${new Date().toISOString().slice(0,10)}" required></div>
       </div>
-      <div style="margin-top:16px;"><button type="submit" class="btn btn-gold">Record Payment &amp; Update Ledger</button></div>
+      <div style="margin-top:16px;"><button type="submit" class="btn btn-gold">Authorize Payment &amp; Update Ledger</button></div>
     </form>
   </div></div>
   ` : ''}
-  ${r.status==='PAID' ? `<div class="banner banner-green">PAID on ${r.paidDate} — Ref ${escapeHtml(r.paidRef||'')}. Ledger balance has been credited.</div>` : ''}
+  ${r.status==='PAID' ? `<div class="banner banner-green">PAID on ${r.paidDate} by ${escapeHtml(r.paidBy||'')} — Ref ${escapeHtml(r.paidRef||'')}. Ledger credited with ${fmtGHS(net)}.</div>` : ''}
   `;
 }
 
@@ -1896,17 +2221,18 @@ function renderReconciliation(){
   const c = latestCashCount();
   const belowThreshold = currentBalance <= threshold;
   const ready = reconciliationReady();
+  const printBlocked = reimbursementPrintBlocked();
   const openReimb = State.reimbursements.filter(r=>!['PAID','REJECTED'].includes(r.status));
   return `
   <div class="page-head">
     <h1>Reconciliation</h1>
-    <p>Confirms the physical cash count matches the system's ledger balance before a reimbursement request may be submitted.</p>
+    <p>Compares the physical cash count against the system's ledger balance. Submitting a reimbursement only needs a count on file; downloading the signed authorization document needs the variance within GHS 10.</p>
   </div>
   <div class="stat-row">
     <div class="stat"><div class="label">System Balance</div><div class="value">${fmtGHS(currentBalance)}</div></div>
     <div class="stat"><div class="label">Last Counted</div><div class="value" style="font-size:16px;">${c ? fmtGHS(c.totalCounted) : '—'}</div><div class="sub">${c ? `${c.date} ${c.time} by ${escapeHtml(c.countedBy)}` : 'No count yet'}</div></div>
-    <div class="stat"><div class="label">Variance</div><div class="value" style="${c && Math.abs(c.variance)>0.001?'color:var(--red);':''}">${c ? fmtGHS(c.variance) : '—'}</div></div>
-    <div class="stat"><div class="label">Reconciliation Gate</div><div class="value" style="font-size:15px;">${ready ? `<span class="badge badge-green">RECONCILED</span>` : `<span class="badge badge-red">NOT RECONCILED</span>`}</div></div>
+    <div class="stat"><div class="label">Variance</div><div class="value" style="${c && Math.abs(c.variance)>10?'color:var(--red);':''}">${c ? fmtGHS(c.variance) : '—'}</div></div>
+    <div class="stat"><div class="label">Document Print Gate</div><div class="value" style="font-size:15px;">${printBlocked ? `<span class="badge badge-red">BLOCKED</span>` : `<span class="badge badge-green">CLEAR</span>`}</div></div>
   </div>
 
   <div class="panel"><div class="panel-head"><h2>Readiness for Reimbursement</h2></div><div class="panel-body">
@@ -1917,10 +2243,16 @@ function renderReconciliation(){
         ${belowThreshold ? `<span class="badge badge-green">DUE</span>` : `<span class="badge badge-neutral">NOT DUE</span>`}
       </div>
       <div>
-        <b>Reconciliation Gate</b>
-        <p style="color:var(--text-muted);font-size:13.5px;">${ready ? 'Latest cash count is within tolerance of the system balance.' : 'No reconciled cash count on file — perform a Cash Count before submitting a request.'}</p>
+        <b>Submission Gate</b>
+        <p style="color:var(--text-muted);font-size:13.5px;">${ready ? 'A cash count is on file — submitting for approval is unblocked.' : 'No cash count on file yet — perform one before submitting a request.'}</p>
         ${ready ? `<span class="badge badge-green">CLEAR</span>` : `<span class="badge badge-red">BLOCKED</span>`}
         ${!ready ? `<button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" data-nav="cashcount">Perform Cash Count</button>` : ''}
+      </div>
+      <div>
+        <b>Document Print Gate (GHS 10)</b>
+        <p style="color:var(--text-muted);font-size:13.5px;">${printBlocked ? 'The latest count\'s variance is more than GHS 10 — the signed authorization document cannot be generated until a fresh, closer count is recorded.' : 'The latest count is within GHS 10 — the authorization document is available for approved/paid requests.'}</p>
+        ${printBlocked ? `<span class="badge badge-red">BLOCKED</span>` : `<span class="badge badge-green">CLEAR</span>`}
+        ${printBlocked ? `<button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" data-nav="cashcount">Perform Fresh Cash Count</button>` : ''}
       </div>
     </div>
     ${openReimb.length>0 ? `<div class="note-box" style="margin-top:16px;">${openReimb.length} reimbursement request(s) currently in progress. <span style="color:var(--gold);cursor:pointer;text-decoration:underline;" data-nav="reimbursement">View Reimbursement</span></div>` : ''}
@@ -2020,6 +2352,30 @@ function parseTransactionsCSV(text){
 }
 /* Formats a JS Date as YYYY-MM-DD using UTC parts, avoiding local-timezone
    day-shifting when SheetJS hands back a Date object for a date cell. */
+/* Reads an image file and resizes it (preserving aspect ratio) down to
+   maxWidth, returning {dataUrl, width, height} — keeps logos small
+   regardless of what the person actually uploads. */
+function resizeImageFile(file, maxWidth){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('Could not read the file'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error('Could not load that as an image'));
+      img.onload = ()=>{
+        const scale = Math.min(1, maxWidth / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve({ dataUrl: canvas.toDataURL('image/png'), width:w, height:h });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 function formatDateUTC(d){
   const y = d.getUTCFullYear(), m = String(d.getUTCMonth()+1).padStart(2,'0'), day = String(d.getUTCDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
@@ -2406,6 +2762,7 @@ function renderUserModal(m){
             <select name="role">
               <option value="Petty Cashier" ${d.role==='Petty Cashier'?'selected':''}>Petty Cashier</option>
               <option value="Reviewer/Approver" ${d.role==='Reviewer/Approver'?'selected':''}>Reviewer/Approver</option>
+              <option value="Head of Finance" ${d.role==='Head of Finance'?'selected':''}>Head of Finance</option>
               <option value="Admin" ${d.role==='Admin'?'selected':''}>Admin</option>
             </select>
           </div>
@@ -2672,6 +3029,34 @@ function bindShell(){
     await setBatchStatus(b.getAttribute('data-batch'), 'SUBMITTED');
     render();
   }));
+  document.querySelectorAll('[data-action="clear-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const bn = b.getAttribute('data-batch');
+    const batch = State.batches.find(x=>x.batchNumber===bn);
+    if(!batch) return;
+    if(batchLockedByReimbursement(bn)){ alert('This batch can no longer be cleared — its reimbursement has already been paid.'); return; }
+    const count = State.transactions.filter(t=>t.batchNumber===bn).length;
+    const confirmText = prompt(`This permanently removes all ${count} transaction(s) currently in ${bn}, so you can upload a corrected list. This cannot be undone.\n\nType CLEAR to confirm:`);
+    if(confirmText !== 'CLEAR') return;
+
+    const before = State.transactions;
+    State.transactions = State.transactions.filter(t=>t.batchNumber!==bn);
+    batch.numTransactions = 0;
+    batch.totalAmount = 0;
+    const ok1 = await storeSet(K.transactions, State.transactions);
+    const ok2 = await storeSet(K.batches, State.batches);
+    if(!ok1 || !ok2){
+      State.transactions = before;
+      batch.numTransactions = count;
+      alert(`⚠️ Could not confirm this was saved (${ConnectionState.lastError}). Nothing was cleared — try again.`);
+      render();
+      return;
+    }
+    await logAudit('Batch cleared for re-upload', `${count} transaction(s)`, '0 transactions', `Batch ${bn}`);
+    State.activeBatchNumber = bn;
+    State.view = 'txnregister';
+    State.modal = {type:'upload-txn'};
+    render();
+  }));
   document.querySelectorAll('[data-action="approve-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
     const bn = b.getAttribute('data-batch');
     const batch = State.batches.find(x=>x.batchNumber===bn);
@@ -2770,7 +3155,7 @@ function bindShell(){
       const variance = totalCounted - systemBalance;
       const withinTolerance = Math.abs(variance) <= tolerance;
       const remarks = new FormData(cashCountForm).get('remarks').trim();
-      if(!withinTolerance && !remarks){ alert('Please add remarks explaining the variance before saving.'); return; }
+      if(!remarks){ alert('Please add a remark before saving — e.g. "Good" if the count is balanced, or an explanation if there\'s a variance.'); return; }
       const id = await nextNumber('cashcount');
       const {date, time, iso} = nowParts();
       const record = { id, date, time, createdAt:iso, denominations, totalCounted, systemBalance, variance, withinTolerance, countedBy: State.currentUser.fullName, remarks };
@@ -2801,6 +3186,7 @@ function bindShell(){
     const r = {
       id, status:'DRAFT', requestDate:date, requestedBy:State.currentUser.fullName, requestedById:State.currentUser.id,
       periodFrom:dates[0], periodTo:dates[dates.length-1], totalAmount, reviewedBy:'', remarks:'', createdAt:iso,
+      adjustmentAmount:0, adjustmentReason:'',
     };
     eligible.forEach(t=>{ t.reimbursementId = id; });
     State.reimbursements.push(r);
@@ -2827,7 +3213,7 @@ function bindShell(){
     const id = b.getAttribute('data-id');
     const r = State.reimbursements.find(x=>x.id===id);
     if(!r || r.status!=='DRAFT') return;
-    if(!reconciliationReady()){ alert('A reconciled cash count is required before submitting.'); return; }
+    if(!reconciliationReady()){ alert('Perform at least one Cash Count before submitting.'); return; }
     r.status = 'SUBMITTED';
     await storeSet(K.reimbursements, State.reimbursements);
     await logAudit('Reimbursement submitted for approval', 'DRAFT', 'SUBMITTED', id);
@@ -2841,7 +3227,7 @@ function bindShell(){
     r.reviewedBy = State.currentUser.fullName;
     r.reviewedAt = nowParts().iso;
     await storeSet(K.reimbursements, State.reimbursements);
-    await logAudit('Reimbursement approved', 'SUBMITTED', 'APPROVED', id);
+    await logAudit('Reconciled — Review Approved', 'SUBMITTED', 'APPROVED', id);
     render();
   }));
   document.querySelectorAll('[data-action="reject-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
@@ -2867,15 +3253,63 @@ function bindShell(){
     await logAudit('Reimbursement reopened to draft', 'REJECTED', 'DRAFT', id);
     render();
   }));
-  document.querySelectorAll('[data-action="print-reimbursement"]').forEach(b=>b.addEventListener('click', ()=>{
+  document.querySelectorAll('[data-action="print-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
     const id = b.getAttribute('data-id');
     const r = State.reimbursements.find(x=>x.id===id);
     if(!r) return;
-    const w = window.open('', '_blank');
-    w.document.write(`<html><head><title>${escapeHtml(r.id)}</title></head><body>${buildAuthorizationDoc(r)}</body></html>`);
-    w.document.close();
-    setTimeout(()=>w.print(), 300);
+    if(reimbursementPrintBlocked()){
+      alert('The latest cash count variance is more than GHS 10 — perform a fresh, closer cash count before downloading the authorization document.');
+      return;
+    }
+    try{
+      generateReimbursementPDF(r);
+      await logAudit('Reimbursement PDF downloaded', '—', r.id);
+    }catch(err){
+      alert('Could not generate the PDF: ' + err.message);
+    }
   }));
+  document.querySelectorAll('[data-action="download-reimbursement-docx"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const r = State.reimbursements.find(x=>x.id===id);
+    if(!r) return;
+    if(reimbursementPrintBlocked()){
+      alert('The latest cash count variance is more than GHS 10 — perform a fresh, closer cash count before downloading the authorization document.');
+      return;
+    }
+    try{
+      await generateReimbursementDocx(r);
+      await logAudit('Reimbursement Word document downloaded', '—', r.id);
+    }catch(err){
+      alert('Could not generate the Word document: ' + err.message);
+    }
+  }));
+  const adjustmentForm = document.getElementById('adjustmentForm');
+  if(adjustmentForm){
+    adjustmentForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const id = adjustmentForm.dataset.id;
+      const r = State.reimbursements.find(x=>x.id===id);
+      if(!r || r.status!=='DRAFT') return;
+      const fd = new FormData(adjustmentForm);
+      const amount = Number(fd.get('adjustmentAmount'))||0;
+      const reason = fd.get('adjustmentReason').trim();
+      if(amount > 0 && !reason){ alert('Add a reason for the adjustment (e.g. "Resetting float to GHS 50,000").'); return; }
+      if(amount > r.totalAmount){ alert(`Adjustment (${fmtGHS(amount)}) can't be more than Amount Spent (${fmtGHS(r.totalAmount)}).`); return; }
+      const before = { adjustmentAmount:r.adjustmentAmount, adjustmentReason:r.adjustmentReason };
+      r.adjustmentAmount = amount;
+      r.adjustmentReason = reason;
+      const ok = await storeSet(K.reimbursements, State.reimbursements);
+      if(!ok){
+        r.adjustmentAmount = before.adjustmentAmount;
+        r.adjustmentReason = before.adjustmentReason;
+        alert(`⚠️ Could not confirm this was saved (${ConnectionState.lastError}). Try again.`);
+        render();
+        return;
+      }
+      await logAudit('Reimbursement adjustment set', before.adjustmentAmount?fmtGHS(before.adjustmentAmount):'—', amount?`${fmtGHS(amount)} — ${reason}`:'—', id);
+      render();
+    });
+  }
   const reimbPayForm = document.getElementById('reimbPayForm');
   if(reimbPayForm){
     reimbPayForm.addEventListener('submit', async (e)=>{
@@ -2888,19 +3322,21 @@ function bindShell(){
       r.paidDate = fd.get('paidDate');
       r.status = 'PAID';
       r.paidBy = State.currentUser.fullName;
-      // credit the ledger with the reimbursement received
+      const netAmount = reimbursementNetAmount(r);
+      // credit the ledger with the net reimbursement amount (Amount Spent
+      // minus any one-time adjustment), not necessarily the raw total spent
       const txnId = await nextNumber('txn');
       const {date, time, iso} = nowParts();
       const creditTxn = {
-        id:txnId, type:'REIMBURSEMENT', date:r.paidDate, amount:r.totalAmount,
-        remarks:`Reimbursement ${r.id} — Ref ${r.paidRef}`, status:'POSTED',
+        id:txnId, type:'REIMBURSEMENT', date:r.paidDate, amount:netAmount,
+        remarks:`Reimbursement ${r.id} — Ref ${r.paidRef}${r.adjustmentAmount?` (net of ${fmtGHS(r.adjustmentAmount)} adjustment)`:''}`, status:'POSTED',
         userId:State.currentUser.id, userName:State.currentUser.fullName,
         dateCreated:date, timeCreated:time, createdAt:iso, reimbursementRequestId:r.id,
       };
       State.transactions.push(creditTxn);
       await storeSet(K.reimbursements, State.reimbursements);
       await storeSet(K.transactions, State.transactions);
-      await logAudit('Reimbursement paid', 'APPROVED', 'PAID', `${id} — ${fmtGHS(r.totalAmount)} — Ref ${r.paidRef}`);
+      await logAudit('Reimbursement paid', 'APPROVED', 'PAID', `${id} — ${fmtGHS(netAmount)} — Ref ${r.paidRef}`);
       render();
     });
   }
@@ -3156,7 +3592,29 @@ function bindShell(){
       e.preventDefault();
       const fd = new FormData(settingsForm);
       const before = JSON.parse(JSON.stringify(State.settings));
+
+      // Logo needs special handling — file inputs don't fit the generic
+      // string-based settings loop below, so it's processed first.
+      const logoFileInput = document.getElementById('logoFileInput');
+      const logoFile = logoFileInput && logoFileInput.files[0];
+      if(fd.get('company.removeLogo') === 'on'){
+        State.settings.company.logoDataUrl = null;
+        State.settings.company.logoW = null;
+        State.settings.company.logoH = null;
+      } else if(logoFile){
+        try{
+          const resized = await resizeImageFile(logoFile, 320);
+          State.settings.company.logoDataUrl = resized.dataUrl;
+          State.settings.company.logoW = resized.width;
+          State.settings.company.logoH = resized.height;
+        }catch(err){
+          alert('Could not process that logo image: ' + err.message);
+          return;
+        }
+      }
+
       for(const [key, val] of fd.entries()){
+        if(key === 'company.logoFile' || key === 'company.removeLogo') continue;
         if(key === 'departments'){
           State.settings.departments = val.split('\n').map(x=>x.trim()).filter(Boolean);
           continue;
