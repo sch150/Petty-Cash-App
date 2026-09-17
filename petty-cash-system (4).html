@@ -440,6 +440,7 @@ let State = {
   activeBatchNumber: '',
   uploadPreview: null,
   filters: {accounts:'', users:'', audit:'', txn:'', batches:''},
+  txnShowAll: false,
 };
 
 /* ---------------- storage helpers ---------------- */
@@ -1146,12 +1147,18 @@ function renderDashboard(){
     .reduce((a,t)=>a+Number(t.amount||0),0);
   const { currentBalance } = computeLedger();
   const belowThreshold = currentBalance <= s.pettyCash.reimbursementThreshold;
+  const pendingReimbursements = State.reimbursements.filter(r=>r.status==='SUBMITTED');
 
   return `
   <div class="page-head">
     <h1>Petty Cash Status</h1>
     <p>${nowParts().date} — Foundation, Transactions & Batches, Cash Control, and Reports are all live.</p>
   </div>
+
+  ${can('reimb.review') && pendingReimbursements.length>0 ? `<div class="banner banner-info" style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+    <div><b>${pendingReimbursements.length} Reimbursement Request${pendingReimbursements.length>1?'s':''} Pending Your Review</b> — ${pendingReimbursements.map(r=>escapeHtml(r.id)).join(', ')}</div>
+    <button type="button" class="btn btn-gold btn-sm" data-nav="reimbursement">Review Now</button>
+  </div>` : ''}
 
   <div class="stat-row">
     <div class="stat">
@@ -1426,10 +1433,13 @@ function renderLedger(){
   const threshold = State.settings.pettyCash.reimbursementThreshold;
   const belowThreshold = currentBalance <= threshold;
   const q = State.filters.txn.toLowerCase();
+  const activeB = activeBatch();
+  const showAll = State.txnShowAll || !!q; // a search always looks across everything, regardless of the toggle
   const all = State.transactions.slice().sort((a,b)=> (a.date+a.createdAt).localeCompare(b.date+b.createdAt));
-  const rows = all.filter(t => t.status!=='VOIDED' && (!q ||
-    [t.id,t.batchNumber,t.voucher,t.recipient,t.accountCode,t.accountName,t.status,t.userName,t.department,t.description].join(' ').toLowerCase().includes(q)
-  ));
+  const rows = all.filter(t => t.status!=='VOIDED'
+    && (showAll || t.type==='REIMBURSEMENT' || (activeB && t.batchNumber===activeB.batchNumber))
+    && (!q || [t.id,t.batchNumber,t.voucher,t.recipient,t.accountCode,t.accountName,t.status,t.userName,t.department,t.description].join(' ').toLowerCase().includes(q))
+  );
 
   return `
   <div class="page-head">
@@ -1450,9 +1460,13 @@ function renderLedger(){
 
   <div class="toolbar">
     <input type="text" id="txnSearch" placeholder="Search recipient, account, batch, voucher, department…" value="${escapeAttr(State.filters.txn)}">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-muted);white-space:nowrap;">
+      <input type="checkbox" id="txnShowAllToggle" style="width:auto;" ${State.txnShowAll?'checked':''}> Show all history (not just current batch)
+    </label>
     ${can('reimbursement.record') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="new-reimbursement">+ Record Reimbursement Received</button>` : ''}
     ${can('txn.create') && activeBatch() ? `<button type="button" class="btn btn-ghost btn-sm" data-action="open-upload-txn">Upload Transactions</button>` : ''}
   </div>
+  ${!showAll ? `<div class="note-box" style="margin-bottom:16px;">Showing only <b>${activeB?escapeHtml(activeB.batchNumber):'the current batch'}</b> plus any reimbursement credits. Reimbursed/older batches are hidden to keep this page fast to work with — tick "Show all history" above, or use Reports/View Batches, to see everything.</div>` : ''}
 
   <div class="panel">
     <div style="overflow-x:auto;">
@@ -1472,7 +1486,7 @@ function renderLedger(){
         <th style="width:70px;"></th>
       </tr></thead>
       <tbody>
-        ${!q ? `<tr><td colspan="9" style="color:var(--text-muted);">Opening Balance</td><td style="text-align:right;font-weight:600;">${fmtGHS(State.settings.pettyCash.approvedFloat)}</td><td></td></tr>` : ''}
+        ${(showAll && !q) ? `<tr><td colspan="9" style="color:var(--text-muted);">Opening Balance</td><td style="text-align:right;font-weight:600;">${fmtGHS(State.settings.pettyCash.approvedFloat)}</td><td></td></tr>` : ''}
         ${rows.map(t => ledgerRow(t, balanceById[t.id])).join('')}
         ${rows.length===0 && q ? `<tr class="empty-row"><td colspan="11">No transactions match your search.</td></tr>` : ''}
         ${can('txn.create') && activeBatch() ? ledgerNewRow() : ''}
@@ -1770,8 +1784,19 @@ function renderCashCount(){
 }
 
 /* ---------------- REIMBURSEMENT ---------------- */
-function eligibleForReimbursement(){
-  return State.transactions.filter(t => t.type==='EXPENSE' && t.status!=='VOIDED' && !t.reimbursementId);
+function eligibleForReimbursement(batchNumber){
+  const base = State.transactions.filter(t => t.type==='EXPENSE' && t.status!=='VOIDED' && !t.reimbursementId);
+  return batchNumber ? base.filter(t=>t.batchNumber===batchNumber) : base;
+}
+function eligibleBatchesForReimbursement(){
+  const map = {};
+  eligibleForReimbursement().forEach(t=>{
+    const bn = t.batchNumber || '(no batch)';
+    if(!map[bn]) map[bn] = {batchNumber:bn, count:0, total:0};
+    map[bn].count++;
+    map[bn].total += Number(t.amount||0);
+  });
+  return Object.values(map).sort((a,b)=> a.batchNumber.localeCompare(b.batchNumber));
 }
 /* The actual amount to be paid out — normally equal to Amount Spent, but can
    be netted down (or up) by a one-time adjustment, e.g. resetting the float
@@ -2067,8 +2092,10 @@ function renderReimbursement(){
   const eligibleTotal = eligible.reduce((s,t)=>s+Number(t.amount||0),0);
   const hasOpenDraft = State.reimbursements.some(r=>r.status==='DRAFT');
   const list = State.reimbursements.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  const pendingReview = list.filter(r=>r.status==='SUBMITTED');
   const selectedId = State.activeReimbursementId && list.some(r=>r.id===State.activeReimbursementId)
-    ? State.activeReimbursementId : (list[0] ? list[0].id : null);
+    ? State.activeReimbursementId
+    : (can('reimb.review') && pendingReview.length>0 ? pendingReview[pendingReview.length-1].id : (list[0] ? list[0].id : null));
   State.activeReimbursementId = selectedId;
   const r = selectedId ? State.reimbursements.find(x=>x.id===selectedId) : null;
 
@@ -2097,7 +2124,7 @@ function renderReimbursement(){
   <div class="toolbar">
     <select id="reimbSelect" ${list.length===0?'disabled':''}>
       ${list.length===0 ? `<option>No reimbursement requests yet</option>` :
-        list.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===selectedId?'selected':''}>${escapeHtml(x.id)} — ${fmtGHS(reimbursementNetAmount(x))} — ${x.status}</option>`).join('')}
+        list.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===selectedId?'selected':''}>${x.status==='SUBMITTED'?'⏳ ':''}${escapeHtml(x.id)} — ${fmtGHS(reimbursementNetAmount(x))} — ${x.status}${x.status==='SUBMITTED'?' (pending your review)':''}</option>`).join('')}
     </select>
     ${r && (r.status==='APPROVED'||r.status==='PAID') ? (
       reimbursementPrintBlocked()
@@ -2162,7 +2189,8 @@ function renderReimbursementDetail(r){
       <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-reimbursement" data-id="${escapeAttr(r.id)}">Cancel Request</button>
     ` : ''}
     ${r.status==='SUBMITTED' && can('reimb.review') ? `
-      <button type="button" class="btn btn-gold btn-sm" data-action="approve-reimbursement" data-id="${escapeAttr(r.id)}">✓ Reconciled — Review Approved</button>
+      <div class="note-box" style="width:100%;margin-bottom:6px;">Review both the itemized expenses above and the latest Cash Count before approving.</div>
+      <button type="button" class="btn btn-gold btn-sm" data-action="approve-reimbursement" data-id="${escapeAttr(r.id)}">✓ APPROVE REIMBURSEMENT</button>
       <button type="button" class="btn btn-ghost btn-sm" data-action="reject-reimbursement" data-id="${escapeAttr(r.id)}">Return / Reject</button>
     ` : ''}
     ${r.status==='REJECTED' && isOwner ? `<button type="button" class="btn btn-ghost btn-sm" data-action="reopen-reimbursement" data-id="${escapeAttr(r.id)}">Reopen to Draft</button>` : ''}
@@ -2541,7 +2569,35 @@ function renderModal(){
   if(m.type === 'import-accounts') return renderImportAccountsModal();
   if(m.type === 'upload-txn') return renderUploadTxnModal();
   if(m.type === 'register-batch') return renderRegisterBatchModal();
+  if(m.type === 'select-reimb-batch') return renderSelectReimbBatchModal();
   return '';
+}
+function renderSelectReimbBatchModal(){
+  const batches = eligibleBatchesForReimbursement();
+  return `
+  <div class="modal-overlay" data-close-modal>
+    <div class="modal" data-stop>
+      <div class="modal-head">
+        <h3>Select Batch to Request Reimbursement For</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="note-box" style="margin-bottom:14px;">Each request covers exactly one batch, so old and new expenses never get mixed together.</div>
+        ${batches.length===0 ? `<p style="color:var(--text-muted);">No unreimbursed transactions found.</p>` :
+          batches.map(b=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line-soft);">
+            <div>
+              <div class="mono" style="font-weight:600;">${escapeHtml(b.batchNumber)}</div>
+              <div style="font-size:12.5px;color:var(--text-muted);">${b.count} transaction(s) — ${fmtGHS(b.total)}</div>
+            </div>
+            <button type="button" class="btn btn-gold btn-sm" data-action="pick-reimb-batch" data-batch="${escapeAttr(b.batchNumber)}">Select</button>
+          </div>`).join('')}
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+      </div>
+    </div>
+  </div>`;
 }
 function renderRegisterBatchModal(){
   const today = new Date().toISOString().slice(0,10);
@@ -2802,6 +2858,13 @@ function bindShell(){
   bindSearch('userSearch','users');
   bindSearch('auditSearch','audit');
   bindSearch('txnSearch','txn');
+  const txnShowAllToggle = document.getElementById('txnShowAllToggle');
+  if(txnShowAllToggle){
+    txnShowAllToggle.addEventListener('change', ()=>{
+      State.txnShowAll = txnShowAllToggle.checked;
+      render();
+    });
+  }
   bindSearch('batchSearch','batches');
 
   // ---- ledger: multi-row save (existing edited rows + trailing new row) ----
@@ -3176,24 +3239,31 @@ function bindShell(){
   }
 
   // ---- reimbursement lifecycle ----
-  document.querySelectorAll('[data-action="create-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
-    const eligible = eligibleForReimbursement();
-    if(eligible.length===0){ alert('No unreimbursed transactions available.'); return; }
+  document.querySelectorAll('[data-action="create-reimbursement"]').forEach(b=>b.addEventListener('click', ()=>{
+    if(eligibleForReimbursement().length===0){ alert('No unreimbursed transactions available.'); return; }
+    State.modal = {type:'select-reimb-batch'};
+    render();
+  }));
+  document.querySelectorAll('[data-action="pick-reimb-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const bn = b.getAttribute('data-batch');
+    const eligible = eligibleForReimbursement(bn);
+    if(eligible.length===0){ alert('No unreimbursed transactions in that batch.'); return; }
     const dates = eligible.map(t=>t.date).sort();
     const id = await nextNumber('reimb');
     const {date, iso} = nowParts();
     const totalAmount = eligible.reduce((s,t)=>s+Number(t.amount||0),0);
     const r = {
       id, status:'DRAFT', requestDate:date, requestedBy:State.currentUser.fullName, requestedById:State.currentUser.id,
-      periodFrom:dates[0], periodTo:dates[dates.length-1], totalAmount, reviewedBy:'', remarks:'', createdAt:iso,
-      adjustmentAmount:0, adjustmentReason:'',
+      periodFrom:dates[0], periodTo:dates[dates.length-1], totalAmount, reviewedBy:'', remarks:`Batch ${bn}`, createdAt:iso,
+      adjustmentAmount:0, adjustmentReason:'', sourceBatch:bn,
     };
     eligible.forEach(t=>{ t.reimbursementId = id; });
     State.reimbursements.push(r);
     await storeSet(K.reimbursements, State.reimbursements);
     await storeSet(K.transactions, State.transactions);
-    await logAudit('Reimbursement request created', '—', `${id} — ${fmtGHS(totalAmount)}`);
+    await logAudit('Reimbursement request created', '—', `${id} — ${fmtGHS(totalAmount)} — Batch ${bn}`);
     State.activeReimbursementId = id;
+    State.modal = null;
     State.view = 'reimbursement';
     render();
   }));
@@ -3227,7 +3297,7 @@ function bindShell(){
     r.reviewedBy = State.currentUser.fullName;
     r.reviewedAt = nowParts().iso;
     await storeSet(K.reimbursements, State.reimbursements);
-    await logAudit('Reconciled — Review Approved', 'SUBMITTED', 'APPROVED', id);
+    await logAudit('Reimbursement approved (reconciled)', 'SUBMITTED', 'APPROVED', id);
     render();
   }));
   document.querySelectorAll('[data-action="reject-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
