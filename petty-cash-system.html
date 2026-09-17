@@ -1,0 +1,3802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Petty Cash Control &amp; Batch Posting System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5/build/index.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#1B2430;
+    --ink-2:#232F40;
+    --ink-3:#2E3B4E;
+    --paper:#F5F3EE;
+    --paper-2:#FFFFFF;
+    --line:#DCD6C6;
+    --line-soft:#EAE6D9;
+    --gold:#A9791F;
+    --gold-bg:#F4E9CF;
+    --green:#2F6E51;
+    --green-bg:#E4EFE7;
+    --red:#A83B2E;
+    --red-bg:#F5E4E0;
+    --text:#20242B;
+    --text-muted:#6B7078;
+    --text-inverse:#F1EEE6;
+    --serif:'Newsreader', Georgia, serif;
+    --sans:'IBM Plex Sans', -apple-system, Segoe UI, sans-serif;
+    --mono:'IBM Plex Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--sans);
+    background:var(--paper);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{min-height:100vh;}
+
+  /* ---------- Login ---------- */
+  .login-wrap{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(169,121,31,0.10), transparent 45%),
+      var(--ink);
+    padding:24px;
+  }
+  .login-card{
+    width:100%;
+    max-width:400px;
+    background:var(--paper-2);
+    border:1px solid var(--line);
+    padding:40px 36px 32px;
+  }
+  .login-mark{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.14em;
+    color:var(--gold);
+    margin-bottom:6px;
+  }
+  .login-title{
+    font-family:var(--serif);
+    font-size:26px;
+    font-weight:600;
+    line-height:1.25;
+    margin:0 0 4px;
+    color:var(--ink);
+  }
+  .login-sub{
+    font-size:13.5px;
+    color:var(--text-muted);
+    margin:0 0 28px;
+    line-height:1.5;
+  }
+  .field{margin-bottom:16px;}
+  .field label{
+    display:block;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--ink-2);
+    margin-bottom:6px;
+  }
+  .field input, .field select, .field textarea{
+    width:100%;
+    padding:10px 12px;
+    font-family:var(--sans);
+    font-size:14px;
+    border:1px solid var(--line);
+    background:var(--paper-2);
+    color:var(--text);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{
+    outline:2px solid var(--gold);
+    outline-offset:-1px;
+  }
+  .field .hint{font-size:11.5px;color:var(--text-muted);margin-top:5px;}
+  .btn{
+    font-family:var(--sans);
+    font-size:13.5px;
+    font-weight:600;
+    padding:10px 18px;
+    border:1px solid var(--ink);
+    background:var(--ink);
+    color:var(--text-inverse);
+    cursor:pointer;
+    transition:opacity .12s ease;
+  }
+  .btn:hover{opacity:.85;}
+  .btn:disabled{opacity:.35;cursor:not-allowed;}
+  .btn-block{width:100%;}
+  .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);}
+  .btn-danger{background:var(--red);border-color:var(--red);}
+  .btn-gold{background:var(--gold);border-color:var(--gold);color:#2A1D04;}
+  .btn-sm{padding:6px 12px;font-size:12.5px;}
+  .login-error{
+    background:var(--red-bg);
+    border:1px solid var(--red);
+    color:var(--red);
+    font-size:13px;
+    padding:9px 12px;
+    margin-bottom:16px;
+  }
+  .login-demo{
+    margin-top:24px;
+    padding-top:18px;
+    border-top:1px solid var(--line-soft);
+    font-size:11.5px;
+    color:var(--text-muted);
+    line-height:1.7;
+  }
+  .login-demo b{color:var(--ink-2);font-family:var(--mono);font-weight:500;}
+
+  /* ---------- Shell ---------- */
+  .shell{display:flex;min-height:100vh;}
+  .sidebar{
+    width:230px;
+    background:var(--ink);
+    color:var(--text-inverse);
+    flex-shrink:0;
+    display:flex;
+    flex-direction:column;
+    padding:22px 0;
+  }
+  .brand{
+    padding:0 20px 20px;
+    border-bottom:1px solid rgba(241,238,230,0.12);
+    margin-bottom:14px;
+  }
+  .brand-name{
+    font-family:var(--serif);
+    font-size:17px;
+    font-weight:600;
+    line-height:1.3;
+  }
+  .brand-tag{
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:.1em;
+    color:var(--gold);
+    margin-top:4px;
+  }
+  .nav-group-label{
+    font-size:10.5px;
+    letter-spacing:.08em;
+    color:rgba(241,238,230,0.4);
+    padding:14px 20px 6px;
+  }
+  .nav-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:9px 20px;
+    font-size:13.5px;
+    cursor:pointer;
+    border-left:3px solid transparent;
+    color:rgba(241,238,230,0.78);
+  }
+  .nav-item:hover:not(.nav-disabled){background:rgba(241,238,230,0.06);}
+  .nav-item.active{
+    border-left-color:var(--gold);
+    background:rgba(241,238,230,0.08);
+    color:#fff;
+    font-weight:600;
+  }
+  .nav-disabled{color:rgba(241,238,230,0.28);cursor:default;}
+  .nav-phase-tag{
+    font-family:var(--mono);
+    font-size:9px;
+    padding:2px 5px;
+    border:1px solid rgba(241,238,230,0.2);
+    color:rgba(241,238,230,0.4);
+  }
+  .sidebar-footer{margin-top:auto;padding:16px 20px 0;}
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:16px 32px;
+    border-bottom:1px solid var(--line);
+    background:var(--paper-2);
+  }
+  .topbar-title{
+    font-family:var(--serif);
+    font-size:20px;
+    font-weight:600;
+    color:var(--ink);
+  }
+  .topbar-user{
+    display:flex;
+    align-items:center;
+    gap:18px;
+    font-size:12.5px;
+    color:var(--text-muted);
+  }
+  .topbar-user .who{text-align:right;line-height:1.5;}
+  .topbar-user .who b{color:var(--ink);font-size:13px;}
+  .role-pill{
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:.05em;
+    padding:2px 8px;
+    border:1px solid var(--gold);
+    color:var(--gold);
+  }
+  .content{padding:28px 32px 60px;flex:1;}
+
+  /* ---------- Common bits ---------- */
+  .page-head{margin-bottom:22px;}
+  .page-head h1{
+    font-family:var(--serif);
+    font-size:24px;
+    font-weight:600;
+    margin:0 0 4px;
+    color:var(--ink);
+  }
+  .page-head p{margin:0;color:var(--text-muted);font-size:13.5px;}
+  .stat-row{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(190px,1fr));
+    gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+    margin-bottom:28px;
+  }
+  .stat{
+    background:var(--paper-2);
+    padding:16px 18px;
+  }
+  .stat .label{
+    font-size:11px;
+    color:var(--text-muted);
+    letter-spacing:.03em;
+    margin-bottom:8px;
+  }
+  .stat .value{
+    font-family:var(--serif);
+    font-size:22px;
+    font-weight:600;
+    color:var(--ink);
+  }
+  .stat .value.gold{color:var(--gold);}
+  .stat .sub{font-size:11px;color:var(--text-muted);margin-top:4px;}
+
+  .panel{background:var(--paper-2);border:1px solid var(--line);margin-bottom:24px;}
+  .panel-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px;border-bottom:1px solid var(--line);
+  }
+  .panel-head h2{font-family:var(--serif);font-size:16px;font-weight:600;margin:0;color:var(--ink);}
+  .panel-body{padding:20px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{
+    text-align:left;
+    font-size:11px;
+    letter-spacing:.03em;
+    color:var(--text-muted);
+    font-weight:600;
+    padding:9px 20px;
+    border-bottom:1px solid var(--line);
+    background:var(--paper);
+  }
+  tbody td{padding:11px 20px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
+  tbody tr:hover{background:var(--paper);}
+  tbody tr:last-child td{border-bottom:none;}
+  .mono{font-family:var(--mono);font-size:12.5px;}
+  table td input, table td select{
+    width:100%;border:1px solid transparent;background:transparent;
+    font-family:var(--sans);font-size:12.5px;padding:5px 6px;color:var(--text);
+  }
+  table td input:hover, table td select:hover{border-color:var(--line);}
+  table td input:focus, table td select:focus{
+    outline:none;border-color:var(--gold);background:var(--paper-2);
+  }
+  table td{padding:6px 10px;}
+  thead th{padding:9px 10px;}
+  .cell-actions{display:flex;gap:8px;justify-content:flex-end;}
+  .empty-row td{text-align:center;color:var(--text-muted);padding:28px;font-size:13px;}
+
+  .badge{
+    display:inline-block;
+    font-size:11px;
+    padding:2px 9px;
+    border:1px solid;
+    font-family:var(--mono);
+  }
+  .badge-green{color:var(--green);border-color:var(--green);background:var(--green-bg);}
+  .badge-red{color:var(--red);border-color:var(--red);background:var(--red-bg);}
+  .badge-gold{color:var(--gold);border-color:var(--gold);background:var(--gold-bg);}
+  .badge-neutral{color:var(--text-muted);border-color:var(--line);background:var(--paper);}
+
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+  .toolbar input[type=text]{
+    padding:8px 12px;font-size:13px;border:1px solid var(--line);font-family:var(--sans);width:240px;
+  }
+  .toolbar input:focus{outline:2px solid var(--gold);outline-offset:-1px;}
+
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:20px;}
+  .tab{
+    padding:9px 16px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;
+    border-bottom:2px solid transparent;margin-bottom:-1px;
+  }
+  .tab.active{color:var(--ink);border-bottom-color:var(--gold);}
+
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 20px;}
+  .form-grid .full{grid-column:1/-1;}
+  @media (max-width:640px){.form-grid{grid-template-columns:1fr;}}
+
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(27,36,48,0.55);
+    display:flex;align-items:center;justify-content:center;padding:20px;z-index:50;
+  }
+  .modal{
+    background:var(--paper-2);border:1px solid var(--line);width:100%;max-width:460px;
+    max-height:90vh;overflow-y:auto;
+  }
+  .modal-head{
+    padding:18px 22px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .modal-head h3{font-family:var(--serif);font-size:17px;font-weight:600;margin:0;color:var(--ink);}
+  .modal-close{cursor:pointer;color:var(--text-muted);font-size:20px;line-height:1;background:none;border:none;}
+  .modal-body{padding:20px 22px;}
+  .modal-foot{padding:16px 22px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px;}
+
+  .banner{
+    padding:12px 16px;font-size:13px;border:1px solid;margin-bottom:20px;
+  }
+  .banner-info{background:var(--gold-bg);border-color:var(--gold);color:#5c4413;}
+  .banner-green{background:var(--green-bg);border-color:var(--green);color:var(--green);}
+
+  .note-box{
+    font-size:12px;color:var(--text-muted);
+    background:var(--paper);border:1px solid var(--line-soft);
+    padding:10px 14px;margin-top:6px;
+  }
+
+  .phase-locked{
+    display:flex;align-items:center;gap:6px;
+    font-family:var(--mono);font-size:10px;color:var(--text-muted);
+  }
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:var(--line);}
+
+  @media (max-width:820px){
+    .shell{flex-direction:column;}
+    .sidebar{width:100%;flex-direction:row;overflow-x:auto;padding:12px 0;}
+    .brand,.sidebar-footer,.nav-group-label{display:none;}
+    .nav-item{border-left:none;border-bottom:3px solid transparent;white-space:nowrap;}
+    .nav-item.active{border-bottom-color:var(--gold);border-left-color:transparent;}
+    .topbar{padding:14px 18px;flex-wrap:wrap;gap:10px;}
+    .content{padding:20px 18px 48px;}
+  }
+
+  /* ---------- Print (authorization documents) ---------- */
+  #printArea{display:none;}
+  @media print{
+    body *{visibility:hidden;}
+    #printArea, #printArea *{visibility:visible;}
+    #printArea{display:block !important;position:absolute;top:0;left:0;width:100%;padding:20px;}
+    #printArea table{width:100%;border-collapse:collapse;}
+    #printArea th, #printArea td{border:1px solid #999;padding:6px 8px;font-size:12px;text-align:left;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="printArea"></div>
+
+<script>
+/* =========================================================================
+   PETTY CASH CONTROL & BATCH POSTING SYSTEM — PHASE 1 (Foundation)
+   Modules: Login/RBAC, Dashboard shell, Account Master, Users, Settings, Audit Log
+   Data is stored via window.storage (shared = visible to every role/session).
+   ========================================================================= */
+
+const SHARED = true;
+const K = {
+  users: 'pettycash:users',
+  accounts: 'pettycash:accounts',
+  settings: 'pettycash:settings',
+  audit: 'pettycash:auditlog',
+  transactions: 'pettycash:transactions',
+  batches: 'pettycash:batches',
+  cashCounts: 'pettycash:cashcounts',
+  reimbursements: 'pettycash:reimbursements',
+};
+
+let State = {
+  loaded: false,
+  loadState: 'loading',
+  view: 'login',
+  currentUser: null,
+  loginError: '',
+  users: [],
+  accounts: [],
+  settings: null,
+  auditLog: [],
+  transactions: [],
+  batches: [],
+  cashCounts: [],
+  reimbursements: [],
+  editingTxnId: null,
+  postingSummaryBatch: null,
+  activeReimbursementId: null,
+  modal: null,        // {type:'user'|'account', mode:'new'|'edit', data:{}}
+  activeTab: {settings: 'company', reports: 'account'},
+  reportFilters: {from:'', to:''},
+  activeBatchNumber: '',
+  uploadPreview: null,
+  filters: {accounts:'', users:'', audit:'', txn:'', batches:''},
+  txnShowAll: false,
+};
+
+/* ---------------- storage helpers ---------------- */
+/* ---------------- BACKEND CONFIG ----------------
+   Paste your deployed Apps Script Web App URL and secret token here.
+   See the setup guide for how to get these two values. */
+const BACKEND = {
+  url: 'https://script.google.com/macros/s/AKfycbwaTRs4HLgAOWEjHVNi2-H1od1MQbBl4jpa9e41Yn3Hl3OMoeYKPg9oJr_Q3r8K9QF2-Q/exec',
+  token: 'finSka$2026',
+};
+const ConnectionState = { ok: true, lastError: '' };
+
+function backendConfigured(){
+  return BACKEND.url && !BACKEND.url.includes('PASTE_YOUR') && BACKEND.token && !BACKEND.token.includes('PASTE_YOUR');
+}
+
+/* Reads use JSONP (a <script> tag), which browsers never subject to CORS —
+   this is what makes reads reliable regardless of the POST/CORS limitation. */
+let _jsonpCounter = 0;
+function jsonpRequest(params){
+  return new Promise((resolve, reject)=>{
+    const cbName = 'gasCb' + (_jsonpCounter++) + '_' + Date.now();
+    const script = document.createElement('script');
+    let done = false;
+    const cleanup = ()=>{
+      delete window[cbName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+      clearTimeout(timer);
+    };
+    window[cbName] = (data)=>{ done = true; cleanup(); resolve(data); };
+    const timer = setTimeout(()=>{ if(!done){ cleanup(); reject(new Error('Request timed out')); } }, 25000);
+    script.onerror = ()=>{ if(!done){ cleanup(); reject(new Error('Could not reach backend')); } };
+    const qs = new URLSearchParams({ ...params, token: BACKEND.token, callback: cbName }).toString();
+    script.src = BACKEND.url + '?' + qs;
+    document.head.appendChild(script);
+  });
+}
+async function storeGet(key, fallback){
+  try{
+    const r = await jsonpRequest({ action:'get', key });
+    if(r.error) throw new Error(r.error);
+    ConnectionState.ok = true;
+    return (r.value===null || r.value===undefined || r.value==='') ? fallback : JSON.parse(r.value);
+  }catch(e){
+    ConnectionState.ok = false; ConnectionState.lastError = String(e);
+    console.error('storage get failed', key, e);
+    return fallback;
+  }
+}
+/* Writes use fetch in "no-cors" mode: the request is genuinely sent and
+   processed by Apps Script (confirmed working), we just can't read the
+   response back — which is fine, since we don't need to for a save. */
+async function storeSet(key, value){
+  const serialized = JSON.stringify(value);
+  try{
+    await fetch(BACKEND.url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action:'set', key, value: serialized, token: BACKEND.token }),
+    });
+  }catch(e){
+    ConnectionState.ok = false; ConnectionState.lastError = 'Could not reach backend: ' + String(e);
+    console.error('storage set failed (network)', key, e);
+    return false;
+  }
+  // no-cors writes always "succeed" from the browser's point of view even if
+  // Google never received them — so read the value straight back to confirm
+  // it actually landed, instead of assuming success.
+  try{
+    const r = await jsonpRequest({ action:'get', key });
+    if(r.error) throw new Error(r.error);
+    if(r.value !== serialized){
+      ConnectionState.ok = false;
+      ConnectionState.lastError = 'Save could not be verified — the value in the Sheet does not match what was sent.';
+      console.error('storage set unverified', key);
+      return false;
+    }
+    ConnectionState.ok = true;
+    return true;
+  }catch(e){
+    ConnectionState.ok = false; ConnectionState.lastError = 'Could not verify save: ' + String(e);
+    console.error('storage set verification failed', key, e);
+    return false;
+  }
+}
+
+function uid(prefix){ return prefix + '-' + Math.random().toString(36).slice(2,9); }
+function nowParts(){
+  const d = new Date();
+  return {
+    date: d.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}),
+    time: d.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}),
+    iso: d.toISOString(),
+  };
+}
+function hashPass(pw){
+  // Lightweight obfuscation so passwords are never stored as plain text.
+  // NOTE: not cryptographically secure — fine for an interim/offline tool,
+  // should be replaced with proper server-side hashing in any networked deployment.
+  let h = 0;
+  for(let i=0;i<pw.length;i++){ h = (h*31 + pw.charCodeAt(i)) >>> 0; }
+  return 'h' + h.toString(16) + ':' + pw.length;
+}
+function fmtGHS(n){
+  const v = Number(n)||0;
+  return 'GHS ' + v.toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+/* ---------------- audit log ---------------- */
+async function logAudit(action, oldValue, newValue, reason){
+  const {date, time} = nowParts();
+  const entry = {
+    id: uid('AUD'),
+    action,
+    oldValue: oldValue===undefined||oldValue===null||oldValue==='' ? '—' : String(oldValue),
+    newValue: newValue===undefined||newValue===null||newValue==='' ? '—' : String(newValue),
+    user: State.currentUser ? State.currentUser.username : 'system',
+    date, time,
+    reason: reason || '',
+  };
+  State.auditLog.unshift(entry);
+  await storeSet(K.audit, State.auditLog);
+}
+
+/* ---------------- seeding ---------------- */
+/* Reads one key, distinguishing "genuinely empty/missing" from "request failed" —
+   this distinction is what lets us tell a real fresh install apart from a
+   temporary connection problem, so we never confuse the two. */
+async function storeGetRaw(key){
+  try{
+    const r = await jsonpRequest({ action:'get', key });
+    if(r.error) throw new Error(r.error);
+    ConnectionState.ok = true;
+    const value = (r.value===null || r.value===undefined || r.value==='') ? null : JSON.parse(r.value);
+    return { ok:true, value };
+  }catch(e){
+    ConnectionState.ok = false; ConnectionState.lastError = String(e);
+    console.error('storage get failed', key, e);
+    return { ok:false, value:null };
+  }
+}
+
+const DEMO_SEED = {
+  users: ()=>[
+    {id:uid('USR'), username:'admin', passwordHash:hashPass('Admin@123'), fullName:'System Administrator', role:'Admin', status:'Active', createdAt:nowParts().iso, lastLogin:null},
+    {id:uid('USR'), username:'cashier', passwordHash:hashPass('Cash@123'), fullName:'Petty Cashier (Demo)', role:'Petty Cashier', status:'Active', createdAt:nowParts().iso, lastLogin:null},
+    {id:uid('USR'), username:'reviewer', passwordHash:hashPass('Review@123'), fullName:'Reviewer / Approver (Demo)', role:'Reviewer/Approver', status:'Active', createdAt:nowParts().iso, lastLogin:null},
+  ],
+  accounts: ()=>[
+    {code:'32001', name:'Printing & Stationery', category:'32000-ADMIN & GENERAL EXPENSES', active:true},
+    {code:'32023', name:'Hotel & Accommodation', category:'32000-ADMIN & GENERAL EXPENSES', active:true},
+    {code:'32014', name:'Generator Fuel', category:'32000-ADMIN & GENERAL EXPENSES', active:true},
+    {code:'32012-1', name:'Office Supplies & Expenses', category:'32000-ADMIN & GENERAL EXPENSES', active:true},
+    {code:'32005-2', name:'Furn & Fittings', category:'32005-REPAIRS & MAINTENANCE', active:true},
+    {code:'32002-1', name:'Lubricant', category:'32002-FUEL AND LUBRICANTS', active:true},
+    {code:'32002-2', name:'Vehicle Fuel', category:'32002-FUEL AND LUBRICANTS', active:true},
+  ],
+  settings: ()=>({
+    company:{ name:'Your Company Ltd', address:'', phone:'', email:'', currency:'GHS', logoDataUrl:null, logoW:null, logoH:null },
+    pettyCash:{ approvedFloat:20000, reimbursementThreshold:5000, minReimbursement:0, maxReimbursement:0, cashCountTolerance:10 },
+    numbering:{ txnPrefix:'PC-TXN', batchPrefix:'HQ_PettyCash_', reimbPrefix:'PC-REIM', cashCountPrefix:'PC-CC', nextTxnSeq:1, nextBatchSeq:1, nextReimbSeq:1, nextCashCountSeq:1 },
+    security:{ minPasswordLength:8, requireComplexity:true, sessionTimeoutMinutes:30 },
+    pettyCashAccountCode:'PC-100',
+    departments:['Admin','Finance','Operations','Logistics','Human Resources','IT'],
+  }),
+};
+
+async function seedIfNeeded(){
+  const [users, accounts, settings, audit, transactions, batches, cashCounts, reimbursements] = await Promise.all([
+    storeGetRaw(K.users), storeGetRaw(K.accounts), storeGetRaw(K.settings), storeGetRaw(K.audit),
+    storeGetRaw(K.transactions), storeGetRaw(K.batches), storeGetRaw(K.cashCounts), storeGetRaw(K.reimbursements),
+  ]);
+
+  if([users, accounts, settings, audit, transactions, batches, cashCounts, reimbursements].some(r=>!r.ok)){
+    // Could not confirm what's actually in the backend — never guess or write
+    // in this state, since that's exactly how real data gets silently
+    // overwritten by blank defaults. Block and let the person retry.
+    State.loadState = 'error';
+    State.loaded = true;
+    return;
+  }
+
+  const usersEmpty = !users.value || users.value.length===0;
+  const accountsEmpty = !accounts.value || accounts.value.length===0;
+  const settingsEmpty = !settings.value;
+
+  if(usersEmpty && accountsEmpty && settingsEmpty){
+    // Nothing at all exists yet in any core table — genuinely looks like a
+    // brand-new install. Still don't write anything automatically; require
+    // an explicit, deliberate confirmation from the person before creating
+    // any data.
+    State.loadState = 'needs-init';
+    State.loaded = true;
+    return;
+  }
+
+  if(usersEmpty || accountsEmpty || settingsEmpty){
+    // Some core data exists but not all of it — this is an anomaly (partial
+    // read failure, wrong backend, corrupted row), never a real fresh
+    // install. Block rather than silently filling in blanks over it.
+    State.loadState = 'error';
+    State.loaded = true;
+    return;
+  }
+
+  State.users = users.value;
+  State.accounts = accounts.value;
+  State.settings = settings.value;
+  State.auditLog = audit.value || [];
+  State.transactions = transactions.value || [];
+  State.batches = batches.value || [];
+  State.cashCounts = cashCounts.value || [];
+  State.reimbursements = reimbursements.value || [];
+  State.loadState = 'ok';
+  State.loaded = true;
+}
+
+async function initializeNewSystem(){
+  State.users = DEMO_SEED.users();
+  State.accounts = DEMO_SEED.accounts();
+  State.settings = DEMO_SEED.settings();
+  State.auditLog = [];
+  State.transactions = [];
+  State.batches = [];
+  State.cashCounts = [];
+  State.reimbursements = [];
+  await Promise.all([
+    storeSet(K.users, State.users),
+    storeSet(K.accounts, State.accounts),
+    storeSet(K.settings, State.settings),
+    storeSet(K.audit, State.auditLog),
+    storeSet(K.transactions, State.transactions),
+    storeSet(K.batches, State.batches),
+    storeSet(K.cashCounts, State.cashCounts),
+    storeSet(K.reimbursements, State.reimbursements),
+  ]);
+  State.loadState = 'ok';
+}
+
+/* ---------------- numbering ---------------- */
+async function nextNumber(kind){
+  const s = State.settings.numbering;
+  if(kind === 'batch'){
+    const seq = s.nextBatchSeq;
+    const id = `${s.batchPrefix}B${String(seq).padStart(3,'0')}`;
+    s.nextBatchSeq = seq + 1;
+    await storeSet(K.settings, State.settings);
+    return id;
+  }
+  const map = {
+    txn:{prefix:'txnPrefix', seq:'nextTxnSeq'},
+    reimb:{prefix:'reimbPrefix', seq:'nextReimbSeq'},
+    cashcount:{prefix:'cashCountPrefix', seq:'nextCashCountSeq'},
+  };
+  const cfg = map[kind];
+  const year = new Date().getFullYear();
+  const seq = s[cfg.seq];
+  const id = `${s[cfg.prefix]}-${year}-${String(seq).padStart(6,'0')}`;
+  s[cfg.seq] = seq + 1;
+  await storeSet(K.settings, State.settings);
+  return id;
+}
+
+/* ---------------- batch helpers ---------------- */
+function batchStats(batchNumber){
+  const txns = State.transactions.filter(t=>t.batchNumber===batchNumber && t.status!=='VOIDED');
+  const total = txns.reduce((s,t)=>s+Number(t.amount||0),0);
+  return {count:txns.length, total};
+}
+async function refreshBatch(batchNumber){
+  if(!batchNumber) return;
+  const b = State.batches.find(x=>x.batchNumber===batchNumber);
+  if(!b) return;
+  const stats = batchStats(batchNumber);
+  b.numTransactions = stats.count;
+  b.totalAmount = stats.total;
+  await storeSet(K.batches, State.batches);
+}
+async function setBatchStatus(batchNumber, newStatus){
+  const b = State.batches.find(x=>x.batchNumber===batchNumber);
+  if(!b) return;
+  const old = b.status;
+  b.status = newStatus;
+  State.transactions.forEach(t=>{ if(t.batchNumber===batchNumber && t.status!=='VOIDED') t.status = newStatus; });
+  await storeSet(K.batches, State.batches);
+  await storeSet(K.transactions, State.transactions);
+  await logAudit('Batch status changed', old, newStatus, `Batch ${batchNumber}`);
+}
+function groupByAccount(txns){
+  const map = {};
+  txns.forEach(t=>{
+    if(t.status==='VOIDED') return;
+    if(!map[t.accountCode]) map[t.accountCode] = {code:t.accountCode, name:t.accountName, amount:0};
+    map[t.accountCode].amount += Number(t.amount||0);
+  });
+  return Object.values(map).sort((a,b)=>a.code.localeCompare(b.code));
+}
+function txnEditable(t){
+  if(t.type==='REIMBURSEMENT') return false;
+  if(t.status==='VOIDED') return false;
+  if(!can('txn.create')) return false;
+  const owner = State.currentUser.role==='Admin' || t.userId===State.currentUser.id;
+  if(!owner) return false;
+  // Editable all the way through batch submission, review and posting — only
+  // locked once the reimbursement covering it has actually been paid.
+  // Admins can still make corrections even after that point if truly needed.
+  if(State.currentUser.role!=='Admin' && t.reimbursementId){
+    const r = State.reimbursements.find(x=>x.id===t.reimbursementId);
+    if(r && r.status==='PAID') return false;
+  }
+  return true;
+}
+function statusBadge(status){
+  const map = {DRAFT:'neutral', SUBMITTED:'gold', 'UNDER REVIEW':'gold', APPROVED:'green', POSTED:'green', CLOSED:'neutral', REJECTED:'red', VOIDED:'red', REVERSED:'red'};
+  return `<span class="badge badge-${map[status]||'neutral'}">${status}</span>`;
+}
+function openDraftBatches(){
+  return State.batches.filter(b=>b.status==='DRAFT').slice().sort((a,b)=>b.batchNumber.localeCompare(a.batchNumber));
+}
+function activeBatch(){
+  if(!State.activeBatchNumber) return null;
+  const b = State.batches.find(x=>x.batchNumber===State.activeBatchNumber);
+  return (b && b.status==='DRAFT') ? b : null;
+}
+/* Shared "Working Batch" bar: entering transactions (manually or via upload)
+   requires an open batch to be selected first, so it isn't picked per line. */
+function renderWorkingBatchBar(){
+  const b = activeBatch();
+  if(b){
+    const stats = batchStats(b.batchNumber);
+    return `
+    <div class="banner banner-green" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div><b class="mono">${escapeHtml(b.batchNumber)}</b> — Working Batch &nbsp; <span style="color:var(--text-muted);">${stats.count} item(s), ${fmtGHS(stats.total)}</span></div>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="change-working-batch">Change Batch</button>
+    </div>`;
+  }
+  const drafts = openDraftBatches();
+  return `
+  <div class="banner banner-info">
+    <div style="margin-bottom:10px;"><b>Select or start a batch before entering transactions</b> — every line you add will be filed under it automatically.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      ${drafts.length>0 ? `
+        <select id="workingBatchSelect" style="padding:8px 10px;border:1px solid var(--line);min-width:220px;">
+          <option value="">Choose an open batch…</option>
+          ${drafts.map(d=>`<option value="${escapeAttr(d.batchNumber)}">${escapeHtml(d.batchNumber)} — ${batchStats(d.batchNumber).count} item(s)</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="use-working-batch">Use Selected Batch</button>
+      ` : ''}
+      <button type="button" class="btn btn-gold btn-sm" data-action="start-new-batch">+ Start New Batch</button>
+      ${can('batch.register-custom') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="open-register-batch">Register an existing batch number</button>` : ''}
+    </div>
+  </div>`;
+}
+function accountLabel(a){
+  return a.category ? `${a.category}:${a.code}-${a.name}` : `${a.code} — ${a.name}`;
+}
+function accountOptions(selected){
+  return State.accounts.filter(a=>a.active).map(a =>
+    `<option value="${escapeAttr(a.code)}" ${a.code===selected?'selected':''}>${escapeHtml(accountLabel(a))}</option>`
+  ).join('');
+}
+function departmentOptions(selected){
+  const list = (State.settings.departments||[]);
+  return `<option value="">—</option>` + list.map(d =>
+    `<option value="${escapeAttr(d)}" ${d===selected?'selected':''}>${escapeHtml(d)}</option>`
+  ).join('');
+}
+/* Running balance ledger: opening float, minus each EXPENSE, plus each REIMBURSEMENT, in date order. */
+function computeLedger(){
+  const rows = State.transactions.filter(t=>t.status!=='VOIDED')
+    .slice().sort((a,b)=> (a.date+a.createdAt).localeCompare(b.date+b.createdAt));
+  let running = State.settings.pettyCash.approvedFloat;
+  const balanceById = {};
+  rows.forEach(t=>{
+    running += (t.type==='REIMBURSEMENT') ? Number(t.amount||0) : -Number(t.amount||0);
+    balanceById[t.id] = running;
+  });
+  return { balanceById, currentBalance: running };
+}
+function draftBatchOptions(selected){
+  const drafts = State.batches.filter(b=>b.status==='DRAFT');
+  return `<option value="">— Unassigned (assign later) —</option>` + drafts.map(b =>
+    `<option value="${escapeAttr(b.batchNumber)}" ${b.batchNumber===selected?'selected':''}>${escapeHtml(b.batchNumber)} (${b.numTransactions} txns)</option>`
+  ).join('');
+}
+
+/* ---------------- role permissions ---------------- */
+function can(perm){
+  const role = State.currentUser && State.currentUser.role;
+  const table = {
+    'accounts.edit': ['Admin'],
+    'users.manage': ['Admin'],
+    'settings.edit': ['Admin'],
+    'audit.view': ['Admin','Head of Finance'],
+    'txn.create': ['Admin','Petty Cashier'],
+    'txn.void': ['Admin'],
+    'batch.create': ['Admin','Petty Cashier'],
+    'batch.review': ['Admin','Reviewer/Approver'],
+    'batch.post': ['Admin'],
+    'reimbursement.record': ['Admin','Petty Cashier'],
+    'batch.register-custom': ['Admin'],
+    'cashcount.create': ['Admin','Petty Cashier'],
+    'reimb.create': ['Admin','Petty Cashier'],
+    'reimb.review': ['Admin','Reviewer/Approver'],
+    'reimb.pay': ['Admin','Head of Finance'],
+  };
+  if(!table[perm]) return true;
+  return table[perm].includes(role);
+}
+
+/* ============================= RENDER ============================= */
+function render(){
+  const app = document.getElementById('app');
+  if(!backendConfigured()){
+    app.innerHTML = renderSetupRequired();
+    return;
+  }
+  if(!State.loaded){
+    app.innerHTML = `<div class="login-wrap"><div style="color:#F1EEE6;font-family:var(--mono);font-size:12px;">Loading…</div></div>`;
+    return;
+  }
+  if(State.loadState === 'error'){
+    app.innerHTML = renderLoadError();
+    bindLoadError();
+    return;
+  }
+  if(State.loadState === 'needs-init'){
+    app.innerHTML = renderNeedsInit();
+    bindNeedsInit();
+    return;
+  }
+  if(State.view === 'login'){
+    app.innerHTML = renderLogin();
+    bindLogin();
+    return;
+  }
+  app.innerHTML = renderShell();
+  bindShell();
+}
+
+function renderNeedsInit(){
+  return `
+  <div class="login-wrap">
+    <div class="login-card" style="max-width:480px;">
+      <div class="login-mark">FIRST-TIME SETUP</div>
+      <h1 class="login-title">No data found yet</h1>
+      <p class="login-sub">Your Google Sheet backend is reachable, but every core table (Users, Accounts, Settings) is completely empty. This usually means one of two things:</p>
+      <div class="note-box" style="margin-bottom:18px;">
+        <b>This really is a brand-new system</b> — nothing has ever been set up here, so it's safe to initialize demo starter data.<br><br>
+        <b>Or this app is pointed at the wrong Google Sheet</b> — if you have existing data elsewhere, initializing here would NOT touch it, but you'd be working in the wrong place. If you expected to see real data and don't, stop here and double-check your Apps Script deployment and BACKEND URL before continuing.
+      </div>
+      <form id="needsInitForm">
+        <div class="field">
+          <label>Type INITIALIZE to confirm this is a genuine first-time setup</label>
+          <input type="text" name="confirm" placeholder="INITIALIZE" required>
+        </div>
+        <button type="submit" class="btn btn-gold btn-block">Initialize New System</button>
+      </form>
+      <div class="login-demo">
+        <span style="color:var(--gold);cursor:pointer;text-decoration:underline;" data-action="retry-load">Or click here to try loading again</span> — useful if this is a temporary connection issue rather than a genuinely empty backend.
+      </div>
+    </div>
+  </div>`;
+}
+function bindNeedsInit(){
+  const form = document.getElementById('needsInitForm');
+  if(form){
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const val = new FormData(form).get('confirm').trim();
+      if(val !== 'INITIALIZE'){ alert('Type INITIALIZE exactly (all capitals) to confirm.'); return; }
+      await initializeNewSystem();
+      render();
+    });
+  }
+  const retry = document.querySelector('[data-action="retry-load"]');
+  if(retry) retry.addEventListener('click', async ()=>{
+    State.loaded = false;
+    render();
+    await seedIfNeeded();
+    render();
+  });
+}
+
+function renderLoadError(){
+  return `
+  <div class="login-wrap">
+    <div class="login-card" style="max-width:480px;">
+      <div class="login-mark">CANNOT SAFELY LOAD DATA</div>
+      <h1 class="login-title">Something's not right</h1>
+      <p class="login-sub">The app could not fully confirm what's in your Google Sheet — either a request failed, or some core data is missing while other data exists (which should never happen on a real, working system).</p>
+      <div class="note-box" style="margin-bottom:18px;">
+        To protect your data, the app will not guess, fill in blanks, or write anything in this state. Common causes: a temporary connection drop, or the app pointing at the wrong Apps Script deployment (see: multiple deployments under "Manage deployments"). Last error: <span class="mono">${escapeHtml(ConnectionState.lastError || 'unknown')}</span>
+      </div>
+      <button class="btn btn-gold btn-block" data-action="retry-load">Try Again</button>
+    </div>
+  </div>`;
+}
+function bindLoadError(){
+  const retry = document.querySelector('[data-action="retry-load"]');
+  if(retry) retry.addEventListener('click', async ()=>{
+    State.loaded = false;
+    render();
+    await seedIfNeeded();
+    render();
+  });
+}
+
+function renderSetupRequired(){
+  return `
+  <div class="login-wrap">
+    <div class="login-card" style="max-width:480px;">
+      <div class="login-mark">SETUP REQUIRED</div>
+      <h1 class="login-title">Connect your Google Sheets backend</h1>
+      <p class="login-sub">This app needs a data backend before it can run. Deploy the included Apps Script code to a Google Sheet, then paste your Web App URL and secret token into the <span class="mono">BACKEND</span> config near the top of this file's &lt;script&gt; section.</p>
+      <div class="note-box">Look for:<br><span class="mono">const BACKEND = { url: 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE', token: 'PASTE_YOUR_SECRET_TOKEN_HERE' };</span><br><br>Replace both placeholder values, save, and reload this page.</div>
+    </div>
+  </div>`;
+}
+
+/* ---------------- LOGIN ---------------- */
+function renderLogin(){
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      ${State.settings.company.logoDataUrl ? `<img src="${State.settings.company.logoDataUrl}" style="max-width:180px;max-height:64px;margin-bottom:14px;display:block;">` : ''}
+      <div class="login-mark">PETTY CASH SUB-LEDGER</div>
+      <h1 class="login-title">Sign in</h1>
+      <p class="login-sub">Petty Cash Management, Control &amp; Batch Posting Workbook</p>
+      ${State.loginError ? `<div class="login-error">${State.loginError}</div>` : ''}
+      <form id="loginForm">
+        <div class="field">
+          <label for="username">Username</label>
+          <input type="text" id="username" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn btn-gold btn-block">Log in</button>
+      </form>
+      <div class="login-demo">
+        Demo accounts for this build —<br>
+        <b>admin / Admin@123</b> — Administrator<br>
+        <b>cashier / Cash@123</b> — Petty Cashier<br>
+        <b>reviewer / Review@123</b> — Reviewer/Approver<br><br>
+        This is a shared workspace: records entered here are visible to everyone who opens this app.
+      </div>
+    </div>
+  </div>`;
+}
+function bindLogin(){
+  document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    const user = State.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+    if(!user || user.passwordHash !== hashPass(password)){
+      State.loginError = 'Incorrect username or password.';
+      render();
+      return;
+    }
+    if(user.status !== 'Active'){
+      State.loginError = 'This account has been disabled. Contact your Administrator.';
+      render();
+      return;
+    }
+    State.loginError = '';
+    State.currentUser = user;
+    const {iso} = nowParts();
+    user.lastLoginPrev = user.lastLogin;
+    user.lastLogin = iso;
+    await storeSet(K.users, State.users);
+    await logAudit('User login', '—', user.username);
+    State.view = 'dashboard';
+    render();
+  });
+}
+
+/* ---------------- SHELL ---------------- */
+const NAV = [
+  {group:'Overview', items:[
+    {id:'dashboard', label:'Dashboard', phase:1},
+  ]},
+  {group:'Transactions', items:[
+    {id:'txnregister', label:'Transaction Ledger', phase:1},
+    {id:'createbatch', label:'Create Batch', phase:1, perm:'batch.create'},
+    {id:'viewbatches', label:'View Batches', phase:1},
+    {id:'postingsummary', label:'Posting Summary', phase:1},
+  ]},
+  {group:'Cash Control', items:[
+    {id:'cashcount', label:'Cash Count', phase:1},
+    {id:'reimbursement', label:'Reimbursement', phase:1},
+    {id:'reconciliation', label:'Reconciliation', phase:1},
+  ]},
+  {group:'Records & Setup', items:[
+    {id:'reports', label:'Reports', phase:1},
+    {id:'accounts', label:'Account Master', phase:1},
+    {id:'users', label:'Users', phase:1, perm:'users.manage'},
+    {id:'settings', label:'Admin Settings', phase:1, perm:'settings.edit'},
+    {id:'audit', label:'Audit Log', phase:1, perm:'audit.view'},
+  ]},
+];
+
+function renderShell(){
+  const navHtml = NAV.map(g => `
+    <div class="nav-group-label">${g.group}</div>
+    ${g.items.map(item => {
+      if(item.perm && !can(item.perm)) return '';
+      const locked = item.phase > 1;
+      const active = State.view === item.id;
+      return `<div class="nav-item ${active?'active':''} ${locked?'nav-disabled':''}" data-nav="${item.id}" ${locked?'':''}>
+        <span>${item.label}</span>
+        ${locked ? `<span class="nav-phase-tag">PHASE ${item.phase}</span>` : ''}
+      </div>`;
+    }).join('')}
+  `).join('');
+
+  const u = State.currentUser;
+  const lastLogin = u.lastLoginPrev ? new Date(u.lastLoginPrev).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'First login';
+
+  return `
+  <div class="shell">
+    <div class="sidebar">
+      <div class="brand">
+        ${State.settings.company.logoDataUrl ? `<img src="${State.settings.company.logoDataUrl}" style="max-width:150px;max-height:52px;margin-bottom:10px;display:block;">` : ''}
+        <div class="brand-name">${escapeHtml(State.settings.company.name || 'Petty Cash System')}</div>
+        <div class="brand-tag">SUB-LEDGER &amp; CONTROL</div>
+      </div>
+      ${navHtml}
+      <div class="sidebar-footer">
+        <div class="nav-item" data-nav="logout" style="border-left:none;">
+          <span>Log out</span>
+        </div>
+      </div>
+    </div>
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar-title">${pageTitle(State.view)}</div>
+        <div class="topbar-user">
+          <div class="who">
+            <div><b>${escapeHtml(u.fullName)}</b> <span class="role-pill">${escapeHtml(u.role)}</span></div>
+            <div>Last login: ${lastLogin}</div>
+          </div>
+        </div>
+      </div>
+      ${!ConnectionState.ok ? `<div class="banner banner-info" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;background:var(--red-bg);border-color:var(--red);color:var(--red);">
+        Not connected to the Google Sheets backend — changes since the last successful save may not be stored. Check your internet connection; this banner clears automatically once saving succeeds again.
+      </div>` : ''}
+      <div class="content" id="content">
+        ${renderView(State.view)}
+      </div>
+    </div>
+  </div>
+  ${State.modal ? renderModal() : ''}
+  `;
+}
+
+function pageTitle(view){
+  const map = {
+    dashboard:'Dashboard', accounts:'Account Master', users:'Users',
+    settings:'Admin Settings', audit:'Audit Log',
+    txnregister:'Transaction Ledger',
+    createbatch:'Create Batch', viewbatches:'Batch Management',
+    postingsummary:'Posting Summary',
+    cashcount:'Cash Count', reimbursement:'Reimbursement', reconciliation:'Reconciliation',
+    reports:'Reports',
+  };
+  return map[view] || 'Dashboard';
+}
+
+function renderView(view){
+  switch(view){
+    case 'dashboard': return renderDashboard();
+    case 'accounts': return renderAccounts();
+    case 'users': return can('users.manage') ? renderUsers() : accessDenied();
+    case 'settings': return can('settings.edit') ? renderSettings() : accessDenied();
+    case 'audit': return can('audit.view') ? renderAudit() : accessDenied();
+    case 'txnregister': return renderLedger();
+    case 'createbatch': return can('batch.create') ? renderCreateBatch() : accessDenied();
+    case 'viewbatches': return renderViewBatches();
+    case 'postingsummary': return renderPostingSummary();
+    case 'cashcount': return renderCashCount();
+    case 'reimbursement': return renderReimbursement();
+    case 'reconciliation': return renderReconciliation();
+    case 'reports': return renderReports();
+    default: return renderDashboard();
+  }
+}
+function accessDenied(){
+  return `<div class="banner banner-info">You don't have access to this module under your current role.</div>`;
+}
+
+/* ---------------- DASHBOARD ---------------- */
+function renderDashboard(){
+  const s = State.settings;
+  const unposted = State.batches.filter(b=>!['POSTED','CLOSED'].includes(b.status)).length;
+  const pending = State.batches.filter(b=>b.status==='SUBMITTED').length;
+  const posted = State.batches.filter(b=>b.status==='POSTED').length;
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const monthTotal = State.transactions
+    .filter(t=>t.status!=='VOIDED' && t.type!=='REIMBURSEMENT' && t.date && t.date.slice(0,7)===thisMonth)
+    .reduce((a,t)=>a+Number(t.amount||0),0);
+  const { currentBalance } = computeLedger();
+  const belowThreshold = currentBalance <= s.pettyCash.reimbursementThreshold;
+  const pendingReimbursements = State.reimbursements.filter(r=>r.status==='SUBMITTED');
+
+  return `
+  <div class="page-head">
+    <h1>Petty Cash Status</h1>
+    <p>${nowParts().date} — Foundation, Transactions & Batches, Cash Control, and Reports are all live.</p>
+  </div>
+
+  ${can('reimb.review') && pendingReimbursements.length>0 ? `<div class="banner banner-info" style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+    <div><b>${pendingReimbursements.length} Reimbursement Request${pendingReimbursements.length>1?'s':''} Pending Your Review</b> — ${pendingReimbursements.map(r=>escapeHtml(r.id)).join(', ')}</div>
+    <button type="button" class="btn btn-gold btn-sm" data-nav="reimbursement">Review Now</button>
+  </div>` : ''}
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="label">Approved Float</div>
+      <div class="value">${fmtGHS(s.pettyCash.approvedFloat)}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Reimbursement Threshold</div>
+      <div class="value">${fmtGHS(s.pettyCash.reimbursementThreshold)}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Current Ledger Balance</div>
+      <div class="value" style="${belowThreshold?'color:var(--red);':''}">${fmtGHS(currentBalance)}</div>
+      <div class="sub">Based on recorded transactions — physical cash count confirms this in Phase 3</div>
+    </div>
+    <div class="stat">
+      <div class="label">Reimbursement Status</div>
+      <div class="value" style="font-size:15px;">
+        ${belowThreshold ? `<span class="badge badge-red">BELOW THRESHOLD</span>` : `<span class="badge badge-green">OK</span>`}
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="label">Unposted Batches</div><div class="value">${unposted}</div></div>
+    <div class="stat"><div class="label">Pending Approval</div><div class="value">${pending}</div></div>
+    <div class="stat"><div class="label">Posted Batches</div><div class="value">${posted}</div></div>
+    <div class="stat"><div class="label">Current Month Expenses</div><div class="value gold">${fmtGHS(monthTotal)}</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>What's live right now</h2></div>
+    <div class="panel-body">
+      <div class="form-grid">
+        <div>
+          <b>Available in this phase</b>
+          <ul style="margin:8px 0 0;padding-left:18px;color:var(--text-muted);font-size:13.5px;line-height:1.9;">
+            <li>Role-based login (Cashier / Reviewer / Admin)</li>
+            <li>Account Master, Users, Settings, Audit Log (Admin)</li>
+            <li>Transaction capture with auto-generated Transaction IDs</li>
+            <li>Batch creation, submission, review, approval &amp; posting</li>
+            <li>Auto-consolidated Posting Summary by account code</li>
+          </ul>
+        </div>
+        <div>
+          <b>Coming in later phases</b>
+          <ul style="margin:8px 0 0;padding-left:18px;color:var(--text-muted);font-size:13.5px;line-height:1.9;">
+            <li>Denomination cash count &amp; reconciliation</li>
+            <li>Reimbursement threshold gate &amp; authorization printing</li>
+            <li>Full reports library, Excel &amp; PDF export</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+/* ---------------- ACCOUNT MASTER ---------------- */
+function renderAccounts(){
+  const editable = can('accounts.edit');
+  const q = State.filters.accounts.toLowerCase();
+  const rows = State.accounts.filter(a =>
+    !q || a.code.toLowerCase().includes(q) || a.name.toLowerCase().includes(q)
+  );
+  return `
+  <div class="page-head">
+    <h1>Account Master</h1>
+    <p>Controlled list of expense accounts. Users select from this list — codes are never typed manually into transactions.</p>
+  </div>
+  <div class="toolbar">
+    <input type="text" id="acctSearch" placeholder="Search code or name…" value="${escapeAttr(State.filters.accounts)}">
+    ${editable ? `<button class="btn btn-gold btn-sm" data-action="new-account">+ New Account Code</button>` : ''}
+    ${editable ? `<button class="btn btn-ghost btn-sm" data-action="open-import-accounts">Import / Update Chart of Accounts</button>` : ''}
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr>
+        <th style="width:140px;">Code</th><th>Account Name</th><th>Category</th><th style="width:100px;">Status</th>
+        ${editable ? `<th style="width:140px;text-align:right;">Actions</th>` : ''}
+      </tr></thead>
+      <tbody>
+        ${rows.length===0 ? `<tr class="empty-row"><td colspan="5">No account codes match your search.</td></tr>` :
+          rows.map(a => `
+          <tr>
+            <td class="mono">${escapeHtml(a.code)}</td>
+            <td>${escapeHtml(a.name)}</td>
+            <td style="color:var(--text-muted);font-size:12.5px;">${escapeHtml(a.category||'—')}</td>
+            <td>${a.active ? `<span class="badge badge-green">ACTIVE</span>` : `<span class="badge badge-red">INACTIVE</span>`}</td>
+            ${editable ? `<td class="cell-actions">
+                <button class="btn btn-ghost btn-sm" data-action="edit-account" data-code="${escapeAttr(a.code)}">Edit</button>
+                <button class="btn btn-ghost btn-sm" data-action="toggle-account" data-code="${escapeAttr(a.code)}">${a.active?'Deactivate':'Activate'}</button>
+              </td>` : ''}
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+
+/* ---------------- USERS ---------------- */
+function renderUsers(){
+  const q = State.filters.users.toLowerCase();
+  const rows = State.users.filter(u =>
+    !q || u.username.toLowerCase().includes(q) || u.fullName.toLowerCase().includes(q) || u.role.toLowerCase().includes(q)
+  );
+  return `
+  <div class="page-head">
+    <h1>Users</h1>
+    <p>Create, edit, disable and assign roles. Passwords are never displayed in plain text.</p>
+  </div>
+  <div class="toolbar">
+    <input type="text" id="userSearch" placeholder="Search username, name or role…" value="${escapeAttr(State.filters.users)}">
+    <button class="btn btn-gold btn-sm" data-action="new-user">+ New User</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr>
+        <th>Username</th><th>Full Name</th><th>Role</th><th style="width:90px;">Status</th><th>Last Login</th>
+        <th style="width:190px;text-align:right;">Actions</th>
+      </tr></thead>
+      <tbody>
+        ${rows.length===0 ? `<tr class="empty-row"><td colspan="6">No users match your search.</td></tr>` :
+          rows.map(u => `
+          <tr>
+            <td class="mono">${escapeHtml(u.username)}</td>
+            <td>${escapeHtml(u.fullName)}</td>
+            <td>${escapeHtml(u.role)}</td>
+            <td>${u.status==='Active' ? `<span class="badge badge-green">ACTIVE</span>` : `<span class="badge badge-red">DISABLED</span>`}</td>
+            <td style="color:var(--text-muted);font-size:12.5px;">${u.lastLogin ? new Date(u.lastLogin).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Never'}</td>
+            <td class="cell-actions">
+              <button class="btn btn-ghost btn-sm" data-action="edit-user" data-id="${u.id}">Edit</button>
+              <button class="btn btn-ghost btn-sm" data-action="reset-pw" data-id="${u.id}">Reset PW</button>
+              <button class="btn btn-ghost btn-sm" data-action="toggle-user" data-id="${u.id}">${u.status==='Active'?'Disable':'Enable'}</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+
+/* ---------------- SETTINGS ---------------- */
+function renderSettings(){
+  const s = State.settings;
+  const tab = State.activeTab.settings;
+  const tabs = [
+    {id:'company', label:'Company'},
+    {id:'pettycash', label:'Petty Cash'},
+    {id:'numbering', label:'Numbering'},
+    {id:'security', label:'Security'},
+    {id:'departments', label:'Departments'},
+  ];
+  return `
+  <div class="page-head">
+    <h1>Admin Settings</h1>
+    <p>Administrator-only. Changes to the float and reimbursement threshold are recorded in the Audit Log.</p>
+  </div>
+  <div class="tabs">
+    ${tabs.map(t=>`<div class="tab ${tab===t.id?'active':''}" data-settings-tab="${t.id}">${t.label}</div>`).join('')}
+  </div>
+  <form id="settingsForm">
+    <div class="panel"><div class="panel-body">
+      ${tab==='company' ? `
+        <div class="form-grid">
+          <div class="field"><label>Company Name</label><input type="text" name="company.name" value="${escapeAttr(s.company.name)}"></div>
+          <div class="field"><label>Currency</label><input type="text" name="company.currency" value="${escapeAttr(s.company.currency)}"></div>
+          <div class="field full"><label>Address</label><input type="text" name="company.address" value="${escapeAttr(s.company.address)}"></div>
+          <div class="field"><label>Telephone</label><input type="text" name="company.phone" value="${escapeAttr(s.company.phone)}"></div>
+          <div class="field"><label>Email</label><input type="text" name="company.email" value="${escapeAttr(s.company.email)}"></div>
+          <div class="field full">
+            <label>Logo</label>
+            ${s.company.logoDataUrl ? `<div style="margin-bottom:10px;"><img src="${s.company.logoDataUrl}" style="max-width:180px;max-height:70px;border:1px solid var(--line);padding:6px;background:var(--paper-2);"></div>` : ''}
+            <input type="file" id="logoFileInput" name="company.logoFile" accept="image/*">
+            <div class="hint">Appears in the sidebar, login screen, and at the top of the Reimbursement PDF/Word document. Automatically resized — any reasonable image works.</div>
+            ${s.company.logoDataUrl ? `<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;font-weight:400;color:var(--text-muted);"><input type="checkbox" name="company.removeLogo" style="width:auto;"> Remove current logo</label>` : ''}
+          </div>
+        </div>
+      ` : ''}
+      ${tab==='pettycash' ? `
+        <div class="form-grid">
+          <div class="field"><label>Approved Petty Cash Float (GHS)</label><input type="number" step="0.01" name="pettyCash.approvedFloat" value="${s.pettyCash.approvedFloat}"></div>
+          <div class="field"><label>Reimbursement Threshold (GHS)</label><input type="number" step="0.01" name="pettyCash.reimbursementThreshold" value="${s.pettyCash.reimbursementThreshold}"></div>
+          <div class="field"><label>Minimum Reimbursement (GHS)</label><input type="number" step="0.01" name="pettyCash.minReimbursement" value="${s.pettyCash.minReimbursement}"></div>
+          <div class="field"><label>Maximum Reimbursement (GHS)</label><input type="number" step="0.01" name="pettyCash.maxReimbursement" value="${s.pettyCash.maxReimbursement}"></div>
+          <div class="field"><label>Cash Count Tolerance (GHS)</label><input type="number" step="0.01" name="pettyCash.cashCountTolerance" value="${s.pettyCash.cashCountTolerance}"></div>
+          <div class="field"><label>Petty Cash Account Code</label><input type="text" name="pettyCashAccountCode" value="${escapeAttr(s.pettyCashAccountCode)}"></div>
+        </div>
+        <div class="note-box">Threshold and float changes are logged with old and new values, the admin who made the change, and the date/time — per the reimbursement control policy.</div>
+      ` : ''}
+      ${tab==='numbering' ? `
+        <div class="form-grid">
+          <div class="field"><label>Transaction Prefix</label><input type="text" name="numbering.txnPrefix" value="${escapeAttr(s.numbering.txnPrefix)}"></div>
+          <div class="field"><label>Next Transaction No.</label><input type="number" name="numbering.nextTxnSeq" value="${s.numbering.nextTxnSeq}"></div>
+          <div class="field"><label>Batch Prefix</label><input type="text" name="numbering.batchPrefix" value="${escapeAttr(s.numbering.batchPrefix)}"></div>
+          <div class="field"><label>Next Batch No.</label><input type="number" name="numbering.nextBatchSeq" value="${s.numbering.nextBatchSeq}"></div>
+          <div class="field"><label>Reimbursement Prefix</label><input type="text" name="numbering.reimbPrefix" value="${escapeAttr(s.numbering.reimbPrefix)}"></div>
+          <div class="field"><label>Next Reimbursement No.</label><input type="number" name="numbering.nextReimbSeq" value="${s.numbering.nextReimbSeq}"></div>
+          <div class="field"><label>Cash Count Prefix</label><input type="text" name="numbering.cashCountPrefix" value="${escapeAttr(s.numbering.cashCountPrefix)}"></div>
+          <div class="field"><label>Next Cash Count No.</label><input type="number" name="numbering.nextCashCountSeq" value="${s.numbering.nextCashCountSeq}"></div>
+        </div>
+        <div class="note-box">Example generated reference: <span class="mono">${escapeHtml(s.numbering.txnPrefix)}-${new Date().getFullYear()}-${String(s.numbering.nextTxnSeq).padStart(6,'0')}</span></div>
+      ` : ''}
+      ${tab==='security' ? `
+        <div class="form-grid">
+          <div class="field"><label>Minimum Password Length</label><input type="number" name="security.minPasswordLength" value="${s.security.minPasswordLength}"></div>
+          <div class="field"><label>Session Timeout (minutes)</label><input type="number" name="security.sessionTimeoutMinutes" value="${s.security.sessionTimeoutMinutes}"></div>
+          <div class="field"><label>Require Complexity (upper/lower/number)</label>
+            <select name="security.requireComplexity">
+              <option value="true" ${s.security.requireComplexity?'selected':''}>Yes</option>
+              <option value="false" ${!s.security.requireComplexity?'selected':''}>No</option>
+            </select>
+          </div>
+        </div>
+      ` : ''}
+      ${tab==='departments' ? `
+        <div class="field full">
+          <label>Departments / Cost Centres (one per line)</label>
+          <textarea name="departments" rows="8" style="width:100%;padding:10px 12px;font-family:var(--sans);font-size:14px;border:1px solid var(--line);">${escapeHtml((s.departments||[]).join('\n'))}</textarea>
+          <div class="hint">These populate the Department dropdown in the Transaction Ledger.</div>
+        </div>
+      ` : ''}
+    </div>
+    <div class="modal-foot" style="border-top:1px solid var(--line);">
+      <button type="submit" class="btn btn-gold">Save Changes</button>
+    </div>
+    </div>
+  </form>
+  `;
+}
+
+/* ---------------- AUDIT LOG ---------------- */
+function renderAudit(){
+  const q = State.filters.audit.toLowerCase();
+  const rows = State.auditLog.filter(a =>
+    !q || a.action.toLowerCase().includes(q) || a.user.toLowerCase().includes(q)
+  );
+  return `
+  <div class="page-head">
+    <h1>Audit Log</h1>
+    <p>Read-only. Every administrative and login action is recorded here permanently.</p>
+  </div>
+  <div class="toolbar">
+    <input type="text" id="auditSearch" placeholder="Search action or user…" value="${escapeAttr(State.filters.audit)}">
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr>
+        <th style="width:170px;">Action</th><th>Old Value</th><th>New Value</th>
+        <th style="width:110px;">User</th><th style="width:140px;">Date / Time</th>
+      </tr></thead>
+      <tbody>
+        ${rows.length===0 ? `<tr class="empty-row"><td colspan="5">No audit entries yet.</td></tr>` :
+          rows.map(a => `
+          <tr>
+            <td>${escapeHtml(a.action)}</td>
+            <td class="mono" style="font-size:12px;">${escapeHtml(a.oldValue)}</td>
+            <td class="mono" style="font-size:12px;">${escapeHtml(a.newValue)}</td>
+            <td>${escapeHtml(a.user)}</td>
+            <td style="color:var(--text-muted);font-size:12.5px;">${a.date} ${a.time}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+
+/* ---------------- NEW / EDIT TRANSACTION ---------------- */
+/* ---------------- TRANSACTION LEDGER (spreadsheet-style) ---------------- */
+function renderLedger(){
+  const { balanceById, currentBalance } = computeLedger();
+  const threshold = State.settings.pettyCash.reimbursementThreshold;
+  const belowThreshold = currentBalance <= threshold;
+  const q = State.filters.txn.toLowerCase();
+  const activeB = activeBatch();
+  const showAll = State.txnShowAll || !!q; // a search always looks across everything, regardless of the toggle
+  const all = State.transactions.slice().sort((a,b)=> (a.date+a.createdAt).localeCompare(b.date+b.createdAt));
+  const rows = all.filter(t => t.status!=='VOIDED'
+    && (showAll || t.type==='REIMBURSEMENT' || (activeB && t.batchNumber===activeB.batchNumber))
+    && (!q || [t.id,t.batchNumber,t.voucher,t.recipient,t.accountCode,t.accountName,t.status,t.userName,t.department,t.description].join(' ').toLowerCase().includes(q))
+  );
+
+  return `
+  <div class="page-head">
+    <h1>Transaction Ledger</h1>
+    <p>One line per transaction — pick the account and department from the dropdowns, type the rest, press Enter to save. Balance updates automatically and reflects your reimbursement threshold.</p>
+  </div>
+
+  ${can('txn.create') ? renderWorkingBatchBar() : ''}
+
+  <div class="stat-row">
+    <div class="stat"><div class="label">Approved Float</div><div class="value">${fmtGHS(State.settings.pettyCash.approvedFloat)}</div></div>
+    <div class="stat"><div class="label">Current Balance</div><div class="value ${belowThreshold?'':'gold'}" style="${belowThreshold?'color:var(--red);':''}">${fmtGHS(currentBalance)}</div></div>
+    <div class="stat"><div class="label">Reimbursement Threshold</div><div class="value">${fmtGHS(threshold)}</div></div>
+    <div class="stat"><div class="label">Status</div><div class="value" style="font-size:15px;">
+      ${belowThreshold ? `<span class="badge badge-red">BELOW THRESHOLD — REQUEST REIMBURSEMENT</span>` : `<span class="badge badge-green">OK</span>`}
+    </div></div>
+  </div>
+
+  <div class="toolbar">
+    <input type="text" id="txnSearch" placeholder="Search recipient, account, batch, voucher, department…" value="${escapeAttr(State.filters.txn)}">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-muted);white-space:nowrap;">
+      <input type="checkbox" id="txnShowAllToggle" style="width:auto;" ${State.txnShowAll?'checked':''}> Show all history (not just current batch)
+    </label>
+    ${can('reimbursement.record') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="new-reimbursement">+ Record Reimbursement Received</button>` : ''}
+    ${can('txn.create') && activeBatch() ? `<button type="button" class="btn btn-ghost btn-sm" data-action="open-upload-txn">Upload Transactions</button>` : ''}
+  </div>
+  ${!showAll ? `<div class="note-box" style="margin-bottom:16px;">Showing only <b>${activeB?escapeHtml(activeB.batchNumber):'the current batch'}</b> plus any reimbursement credits. Reimbursed/older batches are hidden to keep this page fast to work with — tick "Show all history" above, or use Reports/View Batches, to see everything.</div>` : ''}
+
+  <div class="panel">
+    <div style="overflow-x:auto;">
+    <form id="ledgerForm">
+    <table style="min-width:1080px;">
+      <thead><tr>
+        <th style="width:120px;">Date</th>
+        <th style="width:160px;">Recipient</th>
+        <th style="width:220px;">Description / Purpose</th>
+        <th style="width:120px;">Department</th>
+        <th style="width:260px;">Expense Account</th>
+        <th style="width:130px;">Batch</th>
+        <th style="width:100px;">Voucher No.</th>
+        <th style="width:110px;text-align:right;">Paid Amount</th>
+        <th style="width:110px;text-align:right;">Reimbursement</th>
+        <th style="width:110px;text-align:right;">Balance</th>
+        <th style="width:70px;"></th>
+      </tr></thead>
+      <tbody>
+        ${(showAll && !q) ? `<tr><td colspan="9" style="color:var(--text-muted);">Opening Balance</td><td style="text-align:right;font-weight:600;">${fmtGHS(State.settings.pettyCash.approvedFloat)}</td><td></td></tr>` : ''}
+        ${rows.map(t => ledgerRow(t, balanceById[t.id])).join('')}
+        ${rows.length===0 && q ? `<tr class="empty-row"><td colspan="11">No transactions match your search.</td></tr>` : ''}
+        ${can('txn.create') && activeBatch() ? ledgerNewRow() : ''}
+      </tbody>
+    </table>
+    </form>
+    </div>
+  </div>
+  <div class="note-box">Voided transactions are hidden from this ledger but never deleted — see them (and the reason) in the Audit Log. Rows lock automatically once their batch is submitted for review.</div>
+  `;
+}
+
+function ledgerRow(t, balance){
+  if(t.type==='REIMBURSEMENT'){
+    return `
+    <tr style="background:var(--green-bg);">
+      <td>${t.date}</td>
+      <td colspan="6" style="font-weight:600;color:var(--green);">REIMBURSEMENT RECEIVED ${t.remarks?'— '+escapeHtml(t.remarks):''}</td>
+      <td></td>
+      <td style="text-align:right;font-weight:600;color:var(--green);">${fmtGHS(t.amount)}</td>
+      <td style="text-align:right;font-weight:600;">${fmtGHS(balance)}</td>
+      <td class="cell-actions">${can('txn.void') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="void-txn" data-id="${escapeAttr(t.id)}">✕</button>` : ''}</td>
+    </tr>`;
+  }
+  const editable = txnEditable(t);
+  if(!editable){
+    return `
+    <tr>
+      <td>${t.date}</td>
+      <td>${escapeHtml(t.recipient)}</td>
+      <td>${escapeHtml(t.description)}</td>
+      <td>${escapeHtml(t.department||'—')}</td>
+      <td style="font-size:12.5px;">${escapeHtml(accountLabel({code:t.accountCode,name:t.accountName,category:t.accountCategory}))}</td>
+      <td class="mono">${t.batchNumber?escapeHtml(t.batchNumber):'—'} <div>${statusBadge(t.status)}</div></td>
+      <td class="mono">${escapeHtml(t.voucher||'—')}</td>
+      <td style="text-align:right;">${fmtGHS(t.amount)}</td>
+      <td></td>
+      <td style="text-align:right;">${fmtGHS(balance)}</td>
+      <td class="cell-actions">${can('txn.void') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="void-txn" data-id="${escapeAttr(t.id)}">✕</button>` : ''}</td>
+    </tr>`;
+  }
+  return `
+  <tr data-row-id="${escapeAttr(t.id)}">
+    <td><input type="date" name="date" value="${t.date}"></td>
+    <td><input type="text" name="recipient" value="${escapeAttr(t.recipient)}"></td>
+    <td><input type="text" name="description" value="${escapeAttr(t.description)}"></td>
+    <td><select name="department">${departmentOptions(t.department)}</select></td>
+    <td><select name="accountCode"><option value="">Select…</option>${accountOptions(t.accountCode)}</select></td>
+    <td class="mono" style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(t.batchNumber||'—')}</td>
+    <td><input type="text" name="voucher" value="${escapeAttr(t.voucher)}"></td>
+    <td><input type="number" step="0.01" min="0.01" name="amount" value="${t.amount}" style="text-align:right;"></td>
+    <td></td>
+    <td style="text-align:right;">${fmtGHS(balance)}</td>
+    <td class="cell-actions">${can('txn.void') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="void-txn" data-id="${escapeAttr(t.id)}">✕</button>` : ''}</td>
+  </tr>`;
+}
+
+function ledgerNewRow(){
+  const b = activeBatch();
+  return `
+  <tr data-row-id="_new" style="background:var(--paper);">
+    <td><input type="date" name="date" value="${new Date().toISOString().slice(0,10)}"></td>
+    <td><input type="text" name="recipient" placeholder="Recipient name"></td>
+    <td><input type="text" name="description" placeholder="Purpose"></td>
+    <td><select name="department">${departmentOptions('')}</select></td>
+    <td><select name="accountCode"><option value="">Select account…</option>${accountOptions('')}</select></td>
+    <td class="mono" style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(b ? b.batchNumber : '—')}</td>
+    <td><input type="text" name="voucher" placeholder="No."></td>
+    <td><input type="number" step="0.01" min="0.01" name="amount" placeholder="0.00" style="text-align:right;"></td>
+    <td></td>
+    <td></td>
+    <td class="cell-actions"><button type="submit" class="btn btn-gold btn-sm">+</button></td>
+  </tr>`;
+}
+
+/* ---------------- CREATE BATCH ---------------- */
+function renderCreateBatch(){
+  return `
+  <div class="page-head">
+    <h1>Create Batch</h1>
+    <p>Open a new posting batch to group transactions before submitting them for review.</p>
+  </div>
+  <div class="panel"><div class="panel-body">
+  <form id="batchForm">
+    <div class="form-grid">
+      <div class="field"><label>Batch Date</label><input type="date" name="batchDate" value="${new Date().toISOString().slice(0,10)}" required></div>
+      <div class="field full"><label>Remarks</label><input type="text" name="remarks" placeholder="e.g. HQ Petty Cash — September Week 1"></div>
+    </div>
+    <div style="margin-top:20px;">
+      <button type="submit" class="btn btn-gold">Create Batch</button>
+    </div>
+  </form>
+  </div></div>
+  `;
+}
+
+/* ---------------- VIEW BATCHES ---------------- */
+function renderViewBatches(){
+  const q = State.filters.batches.toLowerCase();
+  const rows = State.batches.filter(b => !q || [b.batchNumber,b.preparedBy,b.status,b.remarks].join(' ').toLowerCase().includes(q))
+    .slice().sort((a,b2)=> b2.batchNumber.localeCompare(a.batchNumber));
+  return `
+  <div class="page-head">
+    <h1>Batch Management</h1>
+    <p>Transactions are grouped here for review, approval and posting.</p>
+  </div>
+  <div class="toolbar">
+    <input type="text" id="batchSearch" placeholder="Search batch, preparer, status…" value="${escapeAttr(State.filters.batches)}">
+    ${can('batch.create') ? `<button class="btn btn-gold btn-sm" data-nav="createbatch">+ Create Batch</button>` : ''}
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr>
+        <th>Batch #</th><th style="width:95px;">Date</th><th>Prepared By</th><th style="width:60px;">Txns</th>
+        <th style="width:120px;text-align:right;">Total</th><th style="width:110px;">Status</th>
+        <th style="width:260px;text-align:right;">Actions</th>
+      </tr></thead>
+      <tbody>
+        ${rows.length===0 ? `<tr class="empty-row"><td colspan="7">No batches yet.</td></tr>` :
+          rows.map(b=>`
+          <tr>
+            <td class="mono">${escapeHtml(b.batchNumber)}</td>
+            <td>${b.batchDate}</td>
+            <td>${escapeHtml(b.preparedBy)}</td>
+            <td>${b.numTransactions}</td>
+            <td style="text-align:right;">${fmtGHS(b.totalAmount)}</td>
+            <td>${statusBadge(b.status)}</td>
+            <td class="cell-actions">${batchActionButtons(b)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+function batchLockedByReimbursement(batchNumber){
+  const txnIds = State.transactions.filter(t=>t.batchNumber===batchNumber).map(t=>t.reimbursementId).filter(Boolean);
+  return txnIds.some(rid => {
+    const r = State.reimbursements.find(x=>x.id===rid);
+    return r && r.status==='PAID';
+  });
+}
+function batchActionButtons(b){
+  const btns = [];
+  const isOwner = State.currentUser.role==='Admin' || b.preparedById===State.currentUser.id;
+  if(b.status==='DRAFT' && isOwner && can('batch.create') && b.numTransactions>0){
+    btns.push(`<button class="btn btn-ghost btn-sm" data-action="submit-batch" data-batch="${escapeAttr(b.batchNumber)}">Submit</button>`);
+  }
+  if(b.status==='SUBMITTED' && can('batch.review')){
+    btns.push(`<button class="btn btn-ghost btn-sm" data-action="approve-batch" data-batch="${escapeAttr(b.batchNumber)}">Approve</button>`);
+    btns.push(`<button class="btn btn-ghost btn-sm" data-action="return-batch" data-batch="${escapeAttr(b.batchNumber)}">Return</button>`);
+  }
+  if(b.status==='REJECTED' && isOwner){
+    btns.push(`<button class="btn btn-ghost btn-sm" data-action="reopen-batch" data-batch="${escapeAttr(b.batchNumber)}">Reopen to Draft</button>`);
+  }
+  if(b.numTransactions>0){
+    btns.push(`<button class="btn btn-ghost btn-sm" data-action="view-posting" data-batch="${escapeAttr(b.batchNumber)}">Posting Summary</button>`);
+  }
+  if(b.numTransactions>0 && isOwner && can('txn.create') && !batchLockedByReimbursement(b.batchNumber)){
+    btns.push(`<button class="btn btn-ghost btn-sm" data-action="clear-batch" data-batch="${escapeAttr(b.batchNumber)}" style="color:var(--red);">Clear &amp; Re-upload</button>`);
+  }
+  return btns.join('');
+}
+
+/* ---------------- POSTING SUMMARY ---------------- */
+function renderPostingSummary(){
+  const withTxns = State.batches.filter(b=>b.numTransactions>0);
+  const selected = State.postingSummaryBatch && withTxns.some(b=>b.batchNumber===State.postingSummaryBatch)
+    ? State.postingSummaryBatch : (withTxns[0] ? withTxns[0].batchNumber : null);
+  State.postingSummaryBatch = selected;
+  const batch = selected ? State.batches.find(b=>b.batchNumber===selected) : null;
+  const lines = batch ? groupByAccount(State.transactions.filter(t=>t.batchNumber===selected)) : [];
+  const total = lines.reduce((s,l)=>s+l.amount,0);
+  return `
+  <div class="page-head">
+    <h1>Posting Summary</h1>
+    <p>Consolidated accounting entries by expense account for a selected batch. Individual transactions remain fully accessible in the Transaction Register.</p>
+  </div>
+  <div class="toolbar">
+    <select id="postingBatchSelect" ${withTxns.length===0?'disabled':''}>
+      ${withTxns.length===0 ? `<option>No batches with transactions yet</option>` :
+        withTxns.map(b=>`<option value="${escapeAttr(b.batchNumber)}" ${b.batchNumber===selected?'selected':''}>${escapeHtml(b.batchNumber)} — ${b.status}</option>`).join('')}
+    </select>
+    ${batch ? `<button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">Print</button>` : ''}
+  </div>
+  ${!batch ? `<div class="banner banner-info">Create a batch and add transactions to it to see a posting summary.</div>` : `
+  <div class="panel">
+    <div class="panel-head"><h2>${escapeHtml(batch.batchNumber)}</h2>${statusBadge(batch.status)}</div>
+    <div class="panel-body">
+      <div class="form-grid" style="margin-bottom:18px;font-size:13.5px;">
+        <div><b>Batch Date:</b> ${batch.batchDate}</div>
+        <div><b>Prepared By:</b> ${escapeHtml(batch.preparedBy)}</div>
+        <div><b>Reviewed By:</b> ${escapeHtml(batch.reviewedBy||'—')}</div>
+        <div><b>Approved By:</b> ${escapeHtml(batch.approvedBy||'—')}</div>
+      </div>
+      <table>
+        <thead><tr><th>Account Code</th><th>Account</th><th style="text-align:right;">Amount</th></tr></thead>
+        <tbody>
+          ${lines.map(l=>`<tr><td class="mono">${escapeHtml(l.code)}</td><td>${escapeHtml(l.name)}</td><td style="text-align:right;">${fmtGHS(l.amount)}</td></tr>`).join('')}
+          <tr><td></td><td style="text-align:right;font-weight:600;">Total</td><td style="text-align:right;font-weight:600;">${fmtGHS(total)}</td></tr>
+        </tbody>
+      </table>
+      <div class="note-box" style="margin-top:14px;">
+        <b>Debit:</b> the expense accounts listed above &nbsp;·&nbsp; <b>Credit:</b> Petty Cash (${escapeHtml(State.settings.pettyCashAccountCode)}) — ${fmtGHS(total)}
+      </div>
+    </div>
+  </div>
+
+  ${batch.status==='APPROVED' && can('batch.post') ? `
+  <div class="panel"><div class="panel-head"><h2>Record Posting Reference</h2></div><div class="panel-body">
+    <form id="postingRefForm">
+      <div class="form-grid">
+        <div class="field"><label>Accounting System Reference</label><input type="text" name="accountingReference" placeholder="e.g. QB/JV/2026/0142" required></div>
+        <div class="field"><label>Posting Date</label><input type="date" name="postingDate" value="${new Date().toISOString().slice(0,10)}" required></div>
+        <div class="field full"><label>Posting Remarks</label><input type="text" name="remarks"></div>
+      </div>
+      <div style="margin-top:16px;"><button type="submit" class="btn btn-gold">Record Posting &amp; Close Batch</button></div>
+    </form>
+  </div></div>
+  ` : ''}
+
+  ${batch.status==='POSTED' ? `<div class="banner banner-green">POSTED — Accounting Ref: <span class="mono">${escapeHtml(batch.accountingReference)}</span> on ${batch.postingDate} by ${escapeHtml(batch.postedBy||'')}</div>` : ''}
+  `}
+  `;
+}
+
+/* =========================================================================
+   PHASE 3 — Cash Count, Reimbursement, Reconciliation
+   ========================================================================= */
+const DENOMINATIONS = [
+  {value:200,label:'GHS 200 note'},{value:100,label:'GHS 100 note'},{value:50,label:'GHS 50 note'},
+  {value:20,label:'GHS 20 note'},{value:10,label:'GHS 10 note'},{value:5,label:'GHS 5 note'},
+  {value:2,label:'GHS 2 coin'},{value:1,label:'GHS 1 coin'},
+  {value:0.5,label:'50 Gp coin'},{value:0.2,label:'20 Gp coin'},{value:0.1,label:'10 Gp coin'},{value:0.05,label:'5 Gp coin'},
+];
+
+/* ---------------- CASH COUNT ---------------- */
+function renderCashCount(){
+  const { currentBalance } = computeLedger();
+  const tolerance = State.settings.pettyCash.cashCountTolerance;
+  const history = State.cashCounts.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  return `
+  <div class="page-head">
+    <h1>Cash Count</h1>
+    <p>Count the physical float by denomination. The result is compared automatically against the system's ledger balance.</p>
+  </div>
+  <div class="stat-row">
+    <div class="stat"><div class="label">System Balance (Expected)</div><div class="value">${fmtGHS(currentBalance)}</div></div>
+    <div class="stat"><div class="label">Tolerance</div><div class="value">${fmtGHS(tolerance)}</div></div>
+    <div class="stat"><div class="label">Counted Total (live)</div><div class="value gold" id="cashCountTotalDisplay">${fmtGHS(0)}</div></div>
+    <div class="stat"><div class="label">Variance (live)</div><div class="value" id="cashCountVarianceDisplay">${fmtGHS(-currentBalance)}</div></div>
+  </div>
+  ${can('cashcount.create') ? `
+  <div class="panel"><div class="panel-head"><h2>New Count</h2></div><div class="panel-body">
+    <form id="cashCountForm" data-system-balance="${currentBalance}" data-tolerance="${tolerance}">
+      <table style="max-width:520px;">
+        <thead><tr><th>Denomination</th><th style="width:110px;">Quantity</th><th style="width:120px;text-align:right;">Amount</th></tr></thead>
+        <tbody>
+          ${DENOMINATIONS.map(d=>`
+          <tr>
+            <td>${d.label}</td>
+            <td><input type="number" min="0" step="1" name="qty_${d.value}" data-denom="${d.value}" class="denom-qty" value="0" style="width:100%;padding:6px 8px;border:1px solid var(--line);"></td>
+            <td style="text-align:right;" class="denom-line" data-denom-line="${d.value}">${fmtGHS(0)}</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot><tr><td colspan="2" style="text-align:right;font-weight:600;padding:10px;">Counted Total</td><td style="text-align:right;font-weight:600;padding:10px;" id="denomGrandTotal">${fmtGHS(0)}</td></tr></tfoot>
+      </table>
+      <div class="field" style="max-width:520px;margin-top:14px;">
+        <label>Remarks (required)</label>
+        <input type="text" name="remarks" placeholder="e.g. Good — if balanced within tolerance, or explain any shortfall/excess" required>
+      </div>
+      <div style="margin-top:16px;"><button type="submit" class="btn btn-gold">Save Cash Count</button></div>
+    </form>
+  </div></div>
+  ` : ''}
+  <div class="panel">
+    <div class="panel-head"><h2>Count History</h2></div>
+    <table>
+      <thead><tr><th>Date/Time</th><th>Counted By</th><th style="text-align:right;">Counted</th><th style="text-align:right;">System Balance</th><th style="text-align:right;">Variance</th><th>Status</th><th>Remarks</th></tr></thead>
+      <tbody>
+        ${history.length===0 ? `<tr class="empty-row"><td colspan="7">No cash counts recorded yet.</td></tr>` :
+          history.map(c=>`
+          <tr>
+            <td style="color:var(--text-muted);font-size:12.5px;">${c.date} ${c.time}</td>
+            <td>${escapeHtml(c.countedBy)}</td>
+            <td style="text-align:right;">${fmtGHS(c.totalCounted)}</td>
+            <td style="text-align:right;">${fmtGHS(c.systemBalance)}</td>
+            <td style="text-align:right;${Math.abs(c.variance)>0.001?'color:var(--red);':''}">${fmtGHS(c.variance)}</td>
+            <td>${c.withinTolerance ? `<span class="badge badge-green">BALANCED</span>` : `<span class="badge badge-red">VARIANCE</span>`}</td>
+            <td style="font-size:12.5px;color:var(--text-muted);">${escapeHtml(c.remarks||'—')}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+
+/* ---------------- REIMBURSEMENT ---------------- */
+function eligibleForReimbursement(){
+  return State.transactions.filter(t => t.type==='EXPENSE' && t.status!=='VOIDED' && !t.reimbursementId);
+}
+/* The actual amount to be paid out — normally equal to Amount Spent, but can
+   be netted down (or up) by a one-time adjustment, e.g. resetting the float
+   to a new target amount. */
+function reimbursementNetAmount(r){
+  return Number(r.totalAmount||0) - Number(r.adjustmentAmount||0);
+}
+function truncateText(s, n){ s = String(s||''); return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+function generateReimbursementPDF(r){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = 48;
+  let y = margin;
+  const co = State.settings.company;
+  const items = State.transactions.filter(t=>t.reimbursementId===r.id);
+  const c = latestCashCount();
+  const { currentBalance } = computeLedger();
+  const cashOnHand = c ? c.totalCounted : currentBalance;
+  const float = State.settings.pettyCash.approvedFloat;
+  const amountSpent = r.totalAmount;
+
+  function header(title){
+    if(co.logoDataUrl && co.logoW && co.logoH){
+      const maxW = 90, maxH = 34;
+      const scale = Math.min(maxW/co.logoW, maxH/co.logoH, 1);
+      const w = co.logoW*scale, h = co.logoH*scale;
+      try{ doc.addImage(co.logoDataUrl, 'PNG', pageW-margin-w, margin-10, w, h); }catch(e){ /* ignore malformed image */ }
+    }
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(0);
+    doc.text(co.name || 'Petty Cash', margin, y); y += 18;
+    const addrLine = [co.address, co.phone].filter(Boolean).join('   ·   ');
+    if(addrLine){
+      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90);
+      doc.text(addrLine, margin, y); y += 16;
+    }
+    doc.setTextColor(0);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text(title, pageW/2, y, { align:'center' });
+    y += 10;
+    doc.setLineWidth(0.7); doc.line(margin, y, pageW-margin, y);
+    y += 24;
+  }
+  function labelValueRow(label, value){
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text(label, margin, y);
+    doc.setFont('helvetica','normal');
+    doc.text(String(value), margin+230, y);
+    y += 20;
+  }
+  function signLine(label, name){
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, margin+230, y);
+    doc.line(margin+280, y, margin+440, y);
+    y += 12;
+    doc.setFontSize(9); doc.setFont('helvetica','normal');
+    doc.text(label + (name ? ': ' + name : ''), margin, y);
+    doc.text('Date', margin+280, y);
+    y += 30;
+  }
+
+  // ---- PAGE 1: SUMMARY ----
+  header('PETTY CASH REIMBURSEMENT — SUMMARY');
+  labelValueRow('Request No.:', r.id);
+  labelValueRow('Request Date:', r.requestDate);
+  labelValueRow('Period Covered:', `${r.periodFrom} to ${r.periodTo}`);
+  y += 8;
+  doc.setLineWidth(0.4); doc.line(margin, y, pageW-margin, y); y += 22;
+
+  labelValueRow('Float Amount:', fmtGHS(float));
+  labelValueRow('Amount Spent:', fmtGHS(amountSpent));
+  labelValueRow('Cash on Hand:', fmtGHS(cashOnHand));
+  if(r.adjustmentAmount){
+    labelValueRow('Adjustment:', `-${fmtGHS(r.adjustmentAmount)}${r.adjustmentReason?' — '+r.adjustmentReason:''}`);
+  }
+  labelValueRow('Reimbursement Amount:', fmtGHS(reimbursementNetAmount(r)));
+  y += 22;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.text('Sign-off', margin, y); y += 26;
+
+  signLine('Petty Cashier Name', r.requestedBy);
+  signLine('Reviewer Name', r.reviewedBy || '');
+  signLine('Head of Finance Approval', r.paidBy || '');
+  signLine('Managing Director Approval', '');
+
+  doc.setFontSize(8); doc.setTextColor(130);
+  doc.text(`Generated ${nowParts().date} ${nowParts().time}`, margin, 800);
+  doc.setTextColor(0);
+
+  // ---- PAGE 2: EXPENSES ----
+  doc.addPage();
+  y = margin;
+  header('EXPENSE DETAIL');
+  const colX = [margin, margin+55, margin+165, margin+340, margin+430];
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  doc.text('Date', colX[0], y);
+  doc.text('Recipient', colX[1], y);
+  doc.text('Description', colX[2], y);
+  doc.text('Voucher', colX[3], y);
+  doc.text('Amount', pageW-margin, y, { align:'right' });
+  y += 6;
+  doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 14;
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  items.forEach(t=>{
+    if(y > 780){ doc.addPage(); y = margin; }
+    doc.text(String(t.date), colX[0], y);
+    doc.text(truncateText(t.recipient,20), colX[1], y);
+    doc.text(truncateText(t.description,28), colX[2], y);
+    doc.text(String(t.voucher||'—'), colX[3], y);
+    doc.text(fmtGHS(t.amount), pageW-margin, y, { align:'right' });
+    y += 14;
+  });
+  y += 6; doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 18;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('Amount Spent', colX[2], y);
+  doc.text(fmtGHS(amountSpent), pageW-margin, y, { align:'right' });
+  if(r.adjustmentAmount){
+    y += 16;
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.text(`Adjustment${r.adjustmentReason?' — '+r.adjustmentReason:''}`, colX[2], y);
+    doc.text(`-${fmtGHS(r.adjustmentAmount)}`, pageW-margin, y, { align:'right' });
+    y += 16;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text('Reimbursement Amount', colX[2], y);
+    doc.text(fmtGHS(reimbursementNetAmount(r)), pageW-margin, y, { align:'right' });
+  }
+
+  // ---- PAGE 3: CASH COUNT SUMMARY ----
+  doc.addPage();
+  y = margin;
+  header('CASH COUNT SUMMARY');
+  if(c){
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.text(`Counted by ${c.countedBy} on ${c.date} ${c.time}`, margin, y); y += 22;
+    doc.setFont('helvetica','bold');
+    doc.text('Denomination', margin, y);
+    doc.text('Qty', margin+240, y);
+    doc.text('Amount', pageW-margin, y, { align:'right' });
+    y += 6; doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 14;
+    doc.setFont('helvetica','normal');
+    DENOMINATIONS.forEach(d=>{
+      const qty = (c.denominations && c.denominations[d.value]) || 0;
+      if(qty<=0) return;
+      doc.text(d.label, margin, y);
+      doc.text(String(qty), margin+240, y);
+      doc.text(fmtGHS(d.value*qty), pageW-margin, y, { align:'right' });
+      y += 14;
+    });
+    y += 6; doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 18;
+    doc.setFont('helvetica','bold');
+    doc.text('Total Counted', margin, y); doc.text(fmtGHS(c.totalCounted), pageW-margin, y, { align:'right' }); y += 16;
+    doc.setFont('helvetica','normal');
+    doc.text('System Balance (at time of count)', margin, y); doc.text(fmtGHS(c.systemBalance), pageW-margin, y, { align:'right' }); y += 16;
+    doc.text('Variance', margin, y); doc.text(fmtGHS(c.variance), pageW-margin, y, { align:'right' }); y += 16;
+    if(c.remarks){ y += 10; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.text(`Remarks: ${c.remarks}`, margin, y); }
+  } else {
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('No cash count on file.', margin, y);
+  }
+
+  doc.save(`${r.id}-Reimbursement-Authorization.pdf`);
+}
+
+async function generateReimbursementDocx(r){
+  const { Document, Paragraph, TextRun, Table, TableRow, TableCell, AlignmentType, WidthType, PageBreak, Packer, BorderStyle } = window.docx;
+  const co = State.settings.company;
+  const items = State.transactions.filter(t=>t.reimbursementId===r.id);
+  const c = latestCashCount();
+  const { currentBalance } = computeLedger();
+  const cashOnHand = c ? c.totalCounted : currentBalance;
+  const float = State.settings.pettyCash.approvedFloat;
+  const amountSpent = r.totalAmount;
+  const net = reimbursementNetAmount(r);
+
+  function p(text, opts={}){
+    return new Paragraph({ children:[new TextRun({text:String(text), bold:!!opts.bold, italics:!!opts.italics, size:opts.size||20})], spacing:{after:opts.after??120}, alignment:opts.align });
+  }
+  function labelRow(label, value){
+    return new Paragraph({ children:[ new TextRun({text:label+'  ', bold:true, size:20}), new TextRun({text:String(value), size:20}) ], spacing:{after:100} });
+  }
+  function cell(text, opts={}){
+    return new TableCell({ children:[new Paragraph({children:[new TextRun({text:String(text), bold:!!opts.bold, size:18})]})] });
+  }
+  function table(headers, rows){
+    return new Table({
+      width:{size:100, type:WidthType.PERCENTAGE},
+      rows:[
+        new TableRow({ children: headers.map(h=>cell(h,{bold:true})) }),
+        ...rows.map(row=>new TableRow({ children: row.map(v=>cell(v)) })),
+      ],
+    });
+  }
+  function signBlock(label, name){
+    return [
+      p('_____________________________               _____________________________', {after:60}),
+      p(`${label}${name?': '+name:''}` + '                              Date', {size:18, after:260}),
+    ];
+  }
+
+  const children = [];
+
+  // ---- PAGE 1: SUMMARY ----
+  children.push(new Paragraph({ children:[new TextRun({text:co.name||'Petty Cash', bold:true, size:28})], spacing:{after:60} }));
+  if(co.address||co.phone) children.push(p([co.address,co.phone].filter(Boolean).join('   ·   '), {italics:true, size:18, after:160}));
+  children.push(new Paragraph({ children:[new TextRun({text:'PETTY CASH REIMBURSEMENT — SUMMARY', bold:true, size:26})], alignment:AlignmentType.CENTER, spacing:{after:300} }));
+
+  children.push(labelRow('Request No.:', r.id));
+  children.push(labelRow('Request Date:', r.requestDate));
+  children.push(labelRow('Period Covered:', `${r.periodFrom} to ${r.periodTo}`));
+  children.push(p('', {after:160}));
+
+  children.push(labelRow('Float Amount:', fmtGHS(float)));
+  children.push(labelRow('Amount Spent:', fmtGHS(amountSpent)));
+  children.push(labelRow('Cash on Hand:', fmtGHS(cashOnHand)));
+  if(r.adjustmentAmount){
+    children.push(labelRow('Adjustment:', `-${fmtGHS(r.adjustmentAmount)}${r.adjustmentReason?' — '+r.adjustmentReason:''}`));
+  }
+  children.push(labelRow('Reimbursement Amount:', fmtGHS(net)));
+  children.push(p('', {after:260}));
+
+  children.push(new Paragraph({ children:[new TextRun({text:'Sign-off', bold:true, size:24})], spacing:{after:200} }));
+  children.push(...signBlock('Petty Cashier Name', r.requestedBy));
+  children.push(...signBlock('Reviewer Name', r.reviewedBy||''));
+  children.push(...signBlock('Head of Finance Approval', r.paidBy||''));
+  children.push(...signBlock('Managing Director Approval', ''));
+  children.push(p(`Generated ${nowParts().date} ${nowParts().time}`, {size:14, italics:true}));
+
+  // ---- PAGE 2: EXPENSES ----
+  children.push(new Paragraph({ children:[new PageBreak()] }));
+  children.push(new Paragraph({ children:[new TextRun({text:co.name||'Petty Cash', bold:true, size:22})], spacing:{after:60} }));
+  children.push(new Paragraph({ children:[new TextRun({text:'EXPENSE DETAIL', bold:true, size:24})], alignment:AlignmentType.CENTER, spacing:{after:260} }));
+  children.push(table(
+    ['Date','Recipient','Description','Voucher','Amount'],
+    items.map(t=>[t.date, t.recipient, t.description, t.voucher||'—', fmtGHS(t.amount)])
+  ));
+  children.push(p('', {after:160}));
+  children.push(labelRow('Amount Spent:', fmtGHS(amountSpent)));
+  if(r.adjustmentAmount){
+    children.push(labelRow(`Adjustment${r.adjustmentReason?' — '+r.adjustmentReason:''}:`, `-${fmtGHS(r.adjustmentAmount)}`));
+    children.push(labelRow('Reimbursement Amount:', fmtGHS(net)));
+  }
+
+  // ---- PAGE 3: CASH COUNT SUMMARY ----
+  children.push(new Paragraph({ children:[new PageBreak()] }));
+  children.push(new Paragraph({ children:[new TextRun({text:co.name||'Petty Cash', bold:true, size:22})], spacing:{after:60} }));
+  children.push(new Paragraph({ children:[new TextRun({text:'CASH COUNT SUMMARY', bold:true, size:24})], alignment:AlignmentType.CENTER, spacing:{after:260} }));
+  if(c){
+    children.push(p(`Counted by ${c.countedBy} on ${c.date} ${c.time}`, {after:160}));
+    const denomRows = DENOMINATIONS
+      .filter(d=>(c.denominations && c.denominations[d.value]) > 0)
+      .map(d=>{ const qty = c.denominations[d.value]; return [d.label, String(qty), fmtGHS(d.value*qty)]; });
+    children.push(table(['Denomination','Qty','Amount'], denomRows));
+    children.push(p('', {after:160}));
+    children.push(labelRow('Total Counted:', fmtGHS(c.totalCounted)));
+    children.push(labelRow('System Balance (at time of count):', fmtGHS(c.systemBalance)));
+    children.push(labelRow('Variance:', fmtGHS(c.variance)));
+    if(c.remarks) children.push(p(`Remarks: ${c.remarks}`, {italics:true}));
+  } else {
+    children.push(p('No cash count on file.'));
+  }
+
+  const docx = new Document({ sections:[{ children }] });
+  const blob = await Packer.toBlob(docx);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${r.id}-Reimbursement-Authorization.docx`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function latestCashCount(){
+  return State.cashCounts.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''))[0] || null;
+}
+function reconciliationReady(){
+  // Softened: submitting no longer requires a perfectly-balanced count — any
+  // cash count on file (with its required remark) is enough. The real
+  // control point is now the 10-cedis variance gate on printing/downloading
+  // the signed authorization document.
+  return !!latestCashCount();
+}
+function reimbursementPrintBlocked(){
+  const c = latestCashCount();
+  if(!c) return true; // no cash count on file at all — nothing to base the document on
+  return Math.abs(c.variance) > 10;
+}
+function renderReimbursement(){
+  const { currentBalance } = computeLedger();
+  const threshold = State.settings.pettyCash.reimbursementThreshold;
+  const belowThreshold = currentBalance <= threshold;
+  const eligible = eligibleForReimbursement();
+  const eligibleTotal = eligible.reduce((s,t)=>s+Number(t.amount||0),0);
+  const hasOpenDraft = State.reimbursements.some(r=>r.status==='DRAFT');
+  const list = State.reimbursements.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  const pendingReview = list.filter(r=>r.status==='SUBMITTED');
+  const selectedId = State.activeReimbursementId && list.some(r=>r.id===State.activeReimbursementId)
+    ? State.activeReimbursementId
+    : (can('reimb.review') && pendingReview.length>0 ? pendingReview[pendingReview.length-1].id : (list[0] ? list[0].id : null));
+  State.activeReimbursementId = selectedId;
+  const r = selectedId ? State.reimbursements.find(x=>x.id===selectedId) : null;
+
+  return `
+  <div class="page-head">
+    <h1>Reimbursement</h1>
+    <p>Requests draw from unreimbursed transactions since the last payment. A cash count on file is enough to submit — the signed authorization document can only be downloaded once the latest count is within GHS 10 of the system balance.</p>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="label">Current Balance</div><div class="value" style="${belowThreshold?'color:var(--red);':''}">${fmtGHS(currentBalance)}</div></div>
+    <div class="stat"><div class="label">Threshold</div><div class="value">${fmtGHS(threshold)}</div></div>
+    <div class="stat"><div class="label">Unreimbursed (eligible)</div><div class="value">${fmtGHS(eligibleTotal)}</div><div class="sub">${eligible.length} transaction(s)</div></div>
+    <div class="stat"><div class="label">Document Print Gate</div><div class="value" style="font-size:15px;">${reimbursementPrintBlocked() ? `<span class="badge badge-red">BLOCKED (variance &gt; GHS 10)</span>` : `<span class="badge badge-green">CLEAR</span>`}</div></div>
+  </div>
+
+  ${can('reimb.create') && !hasOpenDraft ? `
+    ${eligible.length===0 ? `<div class="banner banner-info">No unreimbursed transactions to request payment for.</div>` :
+      !belowThreshold ? `<div class="banner banner-info">Balance is still above the reimbursement threshold (${fmtGHS(threshold)}). You can still create a request if needed.
+        <button type="button" class="btn btn-ghost btn-sm" style="margin-left:10px;" data-action="create-reimbursement">Create Anyway</button></div>` :
+      `<div class="banner banner-info">Balance is at or below the reimbursement threshold — a request is due.
+        <button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" data-action="create-reimbursement">Create Reimbursement Request</button></div>`}
+  ` : ''}
+  ${hasOpenDraft && can('reimb.create') ? `<div class="banner banner-info">A draft request already exists — submit or reject it before creating another.</div>` : ''}
+
+  <div class="toolbar">
+    <select id="reimbSelect" ${list.length===0?'disabled':''}>
+      ${list.length===0 ? `<option>No reimbursement requests yet</option>` :
+        list.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===selectedId?'selected':''}>${x.status==='SUBMITTED'?'⏳ ':''}${escapeHtml(x.id)} — ${fmtGHS(reimbursementNetAmount(x))} — ${x.status}${x.status==='SUBMITTED'?' (pending your review)':''}</option>`).join('')}
+    </select>
+    ${r && (r.status==='APPROVED'||r.status==='PAID') ? (
+      reimbursementPrintBlocked()
+        ? `<span class="badge badge-red" style="align-self:center;">Variance &gt; GHS 10 — perform a fresh Cash Count to unlock the document</span>`
+        : `<button type="button" class="btn btn-ghost btn-sm" data-action="print-reimbursement" data-id="${escapeAttr(r.id)}">⬇ Download PDF</button>
+           <button type="button" class="btn btn-ghost btn-sm" data-action="download-reimbursement-docx" data-id="${escapeAttr(r.id)}">⬇ Download Word</button>`
+    ) : ''}
+  </div>
+
+  ${!r ? `<div class="banner banner-info">Create a reimbursement request to see it here.</div>` : renderReimbursementDetail(r)}
+  `;
+}
+function renderReimbursementDetail(r){
+  const items = State.transactions.filter(t=>t.reimbursementId===r.id);
+  const isOwner = State.currentUser.role==='Admin' || r.requestedById===State.currentUser.id;
+  const net = reimbursementNetAmount(r);
+  const hasAdjustment = Number(r.adjustmentAmount||0) !== 0;
+  return `
+  <div class="panel">
+    <div class="panel-head"><h2>${escapeHtml(r.id)}</h2>${statusBadge(r.status)}</div>
+    <div class="panel-body">
+      <div class="form-grid" style="margin-bottom:16px;font-size:13.5px;">
+        <div><b>Requested By:</b> ${escapeHtml(r.requestedBy)}</div>
+        <div><b>Request Date:</b> ${r.requestDate}</div>
+        <div><b>Period:</b> ${r.periodFrom} — ${r.periodTo}</div>
+        <div><b>Amount Spent:</b> ${fmtGHS(r.totalAmount)}</div>
+        <div><b>Reviewed By:</b> ${escapeHtml(r.reviewedBy||'—')}</div>
+        <div><b>Paid:</b> ${r.status==='PAID' ? `${r.paidDate} — Ref ${escapeHtml(r.paidRef||'')}` : '—'}</div>
+        ${hasAdjustment ? `<div><b>Adjustment:</b> -${fmtGHS(r.adjustmentAmount)} ${r.adjustmentReason?`(${escapeHtml(r.adjustmentReason)})`:''}</div>
+        <div><b>Reimbursement Amount:</b> ${fmtGHS(net)}</div>` : ''}
+      </div>
+      <table>
+        <thead><tr><th>Date</th><th>Recipient</th><th>Account</th><th>Voucher</th><th style="text-align:right;">Amount</th></tr></thead>
+        <tbody>
+          ${items.map(t=>`<tr><td>${t.date}</td><td>${escapeHtml(t.recipient)}</td><td style="font-size:12.5px;">${escapeHtml(accountLabel({code:t.accountCode,name:t.accountName,category:t.accountCategory}))}</td><td class="mono">${escapeHtml(t.voucher||'—')}</td><td style="text-align:right;">${fmtGHS(t.amount)}</td></tr>`).join('')}
+          <tr><td colspan="4" style="text-align:right;">Amount Spent</td><td style="text-align:right;">${fmtGHS(r.totalAmount)}</td></tr>
+          ${hasAdjustment ? `<tr><td colspan="4" style="text-align:right;">Adjustment${r.adjustmentReason?' — '+escapeHtml(r.adjustmentReason):''}</td><td style="text-align:right;">-${fmtGHS(r.adjustmentAmount)}</td></tr>` : ''}
+          <tr><td colspan="4" style="text-align:right;font-weight:600;">Reimbursement Amount</td><td style="text-align:right;font-weight:600;">${fmtGHS(net)}</td></tr>
+        </tbody>
+      </table>
+      ${r.remarks ? `<div class="note-box" style="margin-top:12px;">Note: ${escapeHtml(r.remarks)}</div>` : ''}
+    </div>
+  </div>
+
+  ${r.status==='DRAFT' && isOwner && can('reimb.create') ? `
+  <div class="panel"><div class="panel-head"><h2>One-Time Adjustment (optional)</h2></div><div class="panel-body">
+    <div class="note-box" style="margin-bottom:14px;">Use this for a one-time deduction against this request — e.g. resetting the float to a new target amount. Leave at 0 for a normal reimbursement equal to Amount Spent.</div>
+    <form id="adjustmentForm" data-id="${escapeAttr(r.id)}">
+      <div class="form-grid">
+        <div class="field"><label>Adjustment Amount (GHS, deducted from Amount Spent)</label><input type="number" step="0.01" min="0" name="adjustmentAmount" value="${r.adjustmentAmount||0}"></div>
+        <div class="field"><label>Reason</label><input type="text" name="adjustmentReason" value="${escapeAttr(r.adjustmentReason||'')}" placeholder="e.g. Resetting float to GHS 50,000"></div>
+      </div>
+      <div style="margin-top:12px;"><button type="submit" class="btn btn-ghost">Save Adjustment</button></div>
+    </form>
+  </div></div>
+  ` : ''}
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+    ${r.status==='DRAFT' && isOwner && can('reimb.create') ? `
+      ${!reconciliationReady() ? `<div class="banner banner-info" style="width:100%;">Perform at least one Cash Count before submitting — any count is fine, it no longer needs to be perfectly balanced. <span style="color:var(--gold);cursor:pointer;text-decoration:underline;" data-nav="cashcount">Go to Cash Count</span></div>` :
+      `<button type="button" class="btn btn-gold btn-sm" data-action="submit-reimbursement" data-id="${escapeAttr(r.id)}">Submit for Approval</button>`}
+      <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-reimbursement" data-id="${escapeAttr(r.id)}">Cancel Request</button>
+    ` : ''}
+    ${r.status==='SUBMITTED' && can('reimb.review') ? `
+      <div class="note-box" style="width:100%;margin-bottom:6px;">Review both the itemized expenses above and the latest Cash Count before approving.</div>
+      <button type="button" class="btn btn-gold btn-sm" data-action="approve-reimbursement" data-id="${escapeAttr(r.id)}">✓ APPROVE REIMBURSEMENT</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="reject-reimbursement" data-id="${escapeAttr(r.id)}">Return / Reject</button>
+    ` : ''}
+    ${r.status==='REJECTED' && isOwner ? `<button type="button" class="btn btn-ghost btn-sm" data-action="reopen-reimbursement" data-id="${escapeAttr(r.id)}">Reopen to Draft</button>` : ''}
+  </div>
+
+  ${r.status==='APPROVED' && can('reimb.pay') ? `
+  <div class="panel"><div class="panel-head"><h2>Head of Finance &amp; Admin — Sign-off &amp; Payment</h2></div><div class="panel-body">
+    <div class="note-box" style="margin-bottom:14px;">Reviewed and reconciled by ${escapeHtml(r.reviewedBy||'—')}. Recording payment here will credit the ledger with ${fmtGHS(net)}${hasAdjustment?' (net of the adjustment above)':''} and mark this request PAID.</div>
+    <form id="reimbPayForm" data-id="${escapeAttr(r.id)}">
+      <div class="form-grid">
+        <div class="field"><label>Payment / Bank Reference</label><input type="text" name="paidRef" required></div>
+        <div class="field"><label>Payment Date</label><input type="date" name="paidDate" value="${new Date().toISOString().slice(0,10)}" required></div>
+      </div>
+      <div style="margin-top:16px;"><button type="submit" class="btn btn-gold">Authorize Payment &amp; Update Ledger</button></div>
+    </form>
+  </div></div>
+  ` : ''}
+  ${r.status==='PAID' ? `<div class="banner banner-green">PAID on ${r.paidDate} by ${escapeHtml(r.paidBy||'')} — Ref ${escapeHtml(r.paidRef||'')}. Ledger credited with ${fmtGHS(net)}.</div>` : ''}
+  `;
+}
+
+function buildAuthorizationDoc(r){
+  const items = State.transactions.filter(t=>t.reimbursementId===r.id);
+  const co = State.settings.company;
+  return `
+    <div style="font-family:'IBM Plex Sans',sans-serif;">
+      <h2 style="margin-bottom:2px;">${escapeHtml(co.name||'')}</h2>
+      <div style="font-size:12px;color:#555;margin-bottom:16px;">${escapeHtml(co.address||'')} ${co.phone?(' · '+escapeHtml(co.phone)):''}</div>
+      <h3 style="text-align:center;text-decoration:underline;margin:18px 0;">PETTY CASH REIMBURSEMENT AUTHORIZATION</h3>
+      <table style="margin-bottom:16px;"><tbody>
+        <tr><td><b>Request No.</b></td><td>${escapeHtml(r.id)}</td><td><b>Request Date</b></td><td>${r.requestDate}</td></tr>
+        <tr><td><b>Period Covered</b></td><td>${r.periodFrom} to ${r.periodTo}</td><td><b>Requested By</b></td><td>${escapeHtml(r.requestedBy)}</td></tr>
+        <tr><td><b>Reviewed / Approved By</b></td><td>${escapeHtml(r.reviewedBy||'')}</td><td><b>Status</b></td><td>${r.status}</td></tr>
+      </tbody></table>
+      <table>
+        <thead><tr><th>Date</th><th>Recipient</th><th>Description</th><th>Account</th><th>Voucher No.</th><th>Amount</th></tr></thead>
+        <tbody>
+          ${items.map(t=>`<tr><td>${t.date}</td><td>${escapeHtml(t.recipient)}</td><td>${escapeHtml(t.description)}</td><td>${escapeHtml(t.accountCode)} ${escapeHtml(t.accountName)}</td><td>${escapeHtml(t.voucher||'')}</td><td>${fmtGHS(t.amount)}</td></tr>`).join('')}
+          <tr><td colspan="5" style="text-align:right;"><b>Total Amount Authorized</b></td><td><b>${fmtGHS(r.totalAmount)}</b></td></tr>
+        </tbody>
+      </table>
+      <div style="display:flex;justify-content:space-between;margin-top:60px;">
+        <div style="width:30%;border-top:1px solid #333;padding-top:6px;font-size:12px;text-align:center;">Prepared By (Petty Cashier)</div>
+        <div style="width:30%;border-top:1px solid #333;padding-top:6px;font-size:12px;text-align:center;">Reviewed &amp; Approved By</div>
+        <div style="width:30%;border-top:1px solid #333;padding-top:6px;font-size:12px;text-align:center;">Received By (Finance)</div>
+      </div>
+      <div style="margin-top:24px;font-size:10.5px;color:#777;">Printed ${nowParts().date} ${nowParts().time} — Petty Cash Control &amp; Batch Posting System</div>
+    </div>
+  `;
+}
+
+/* ---------------- RECONCILIATION ---------------- */
+function renderReconciliation(){
+  const { currentBalance } = computeLedger();
+  const threshold = State.settings.pettyCash.reimbursementThreshold;
+  const c = latestCashCount();
+  const belowThreshold = currentBalance <= threshold;
+  const ready = reconciliationReady();
+  const printBlocked = reimbursementPrintBlocked();
+  const openReimb = State.reimbursements.filter(r=>!['PAID','REJECTED'].includes(r.status));
+  return `
+  <div class="page-head">
+    <h1>Reconciliation</h1>
+    <p>Compares the physical cash count against the system's ledger balance. Submitting a reimbursement only needs a count on file; downloading the signed authorization document needs the variance within GHS 10.</p>
+  </div>
+  <div class="stat-row">
+    <div class="stat"><div class="label">System Balance</div><div class="value">${fmtGHS(currentBalance)}</div></div>
+    <div class="stat"><div class="label">Last Counted</div><div class="value" style="font-size:16px;">${c ? fmtGHS(c.totalCounted) : '—'}</div><div class="sub">${c ? `${c.date} ${c.time} by ${escapeHtml(c.countedBy)}` : 'No count yet'}</div></div>
+    <div class="stat"><div class="label">Variance</div><div class="value" style="${c && Math.abs(c.variance)>10?'color:var(--red);':''}">${c ? fmtGHS(c.variance) : '—'}</div></div>
+    <div class="stat"><div class="label">Document Print Gate</div><div class="value" style="font-size:15px;">${printBlocked ? `<span class="badge badge-red">BLOCKED</span>` : `<span class="badge badge-green">CLEAR</span>`}</div></div>
+  </div>
+
+  <div class="panel"><div class="panel-head"><h2>Readiness for Reimbursement</h2></div><div class="panel-body">
+    <div class="form-grid">
+      <div>
+        <b>Threshold Gate</b>
+        <p style="color:var(--text-muted);font-size:13.5px;">${belowThreshold ? `Balance ${fmtGHS(currentBalance)} is at or below the ${fmtGHS(threshold)} threshold — reimbursement is due.` : `Balance ${fmtGHS(currentBalance)} is still above the ${fmtGHS(threshold)} threshold.`}</p>
+        ${belowThreshold ? `<span class="badge badge-green">DUE</span>` : `<span class="badge badge-neutral">NOT DUE</span>`}
+      </div>
+      <div>
+        <b>Submission Gate</b>
+        <p style="color:var(--text-muted);font-size:13.5px;">${ready ? 'A cash count is on file — submitting for approval is unblocked.' : 'No cash count on file yet — perform one before submitting a request.'}</p>
+        ${ready ? `<span class="badge badge-green">CLEAR</span>` : `<span class="badge badge-red">BLOCKED</span>`}
+        ${!ready ? `<button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" data-nav="cashcount">Perform Cash Count</button>` : ''}
+      </div>
+      <div>
+        <b>Document Print Gate (GHS 10)</b>
+        <p style="color:var(--text-muted);font-size:13.5px;">${printBlocked ? 'The latest count\'s variance is more than GHS 10 — the signed authorization document cannot be generated until a fresh, closer count is recorded.' : 'The latest count is within GHS 10 — the authorization document is available for approved/paid requests.'}</p>
+        ${printBlocked ? `<span class="badge badge-red">BLOCKED</span>` : `<span class="badge badge-green">CLEAR</span>`}
+        ${printBlocked ? `<button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" data-nav="cashcount">Perform Fresh Cash Count</button>` : ''}
+      </div>
+    </div>
+    ${openReimb.length>0 ? `<div class="note-box" style="margin-top:16px;">${openReimb.length} reimbursement request(s) currently in progress. <span style="color:var(--gold);cursor:pointer;text-decoration:underline;" data-nav="reimbursement">View Reimbursement</span></div>` : ''}
+  </div></div>
+  `;
+}
+
+/* ---------------- REPORTS ---------------- */
+function filteredExpenseTxns(){
+  const {from, to} = State.reportFilters;
+  return State.transactions.filter(t =>
+    t.type!=='REIMBURSEMENT' && t.status!=='VOIDED' &&
+    (!from || t.date>=from) && (!to || t.date<=to)
+  );
+}
+function toCSV(rows){
+  return rows.map(r => r.map(cell => {
+    const s = String(cell ?? '');
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(',')).join('\r\n');
+}
+/* Parses CSV text (supports quoted fields with embedded commas) into
+   account rows for the Import Chart of Accounts feature. */
+function parseCSVLine(line){
+  const cells = []; let cur=''; let inQuotes=false;
+  for(let i=0;i<line.length;i++){
+    const c = line[i];
+    if(inQuotes){
+      if(c==='"' && line[i+1]==='"'){ cur+='"'; i++; }
+      else if(c==='"'){ inQuotes=false; }
+      else cur+=c;
+    } else {
+      if(c==='"') inQuotes=true;
+      else if(c===','){ cells.push(cur); cur=''; }
+      else cur+=c;
+    }
+  }
+  cells.push(cur);
+  return cells;
+}
+function parseAccountsCSV(text){
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l.length>0);
+  if(lines.length===0) return [];
+  let start = 0;
+  if(/^code\s*,/i.test(lines[0])) start = 1; // skip header row if present
+  const out = [];
+  for(let i=start;i<lines.length;i++){
+    const cells = parseCSVLine(lines[i]);
+    const code = (cells[0]||'').trim();
+    const name = (cells[1]||'').trim();
+    const category = (cells[2]||'').trim();
+    const activeRaw = (cells[3]||'true').trim().toLowerCase();
+    if(!code || !name) continue;
+    out.push({ code, name, category, active: activeRaw!=='false' });
+  }
+  return out;
+}
+/* Accepts YYYY-MM-DD or DD/MM/YYYY; returns YYYY-MM-DD or null if unparseable. */
+function parseDateFlexible(raw){
+  const s = (raw||'').trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m){
+    const day = m[1].padStart(2,'0'), month = m[2].padStart(2,'0'), year = m[3];
+    return `${year}-${month}-${day}`;
+  }
+  return null;
+}
+/* Parses the Upload Transactions CSV: date,recipient,description,department,accountCode,voucher,amount */
+function parseTransactionsCSV(text){
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l.length>0);
+  if(lines.length===0) return { rows:[], errors:[] };
+  let start = 0;
+  if(/^date\s*,/i.test(lines[0])) start = 1;
+  const rows = [], errors = [];
+  for(let i=start;i<lines.length;i++){
+    const lineNo = i+1;
+    const cells = parseCSVLine(lines[i]);
+    const rawDate = (cells[0]||'').trim();
+    const recipient = (cells[1]||'').trim();
+    const description = (cells[2]||'').trim();
+    const department = (cells[3]||'').trim();
+    const accountCode = (cells[4]||'').trim();
+    const voucher = (cells[5]||'').trim();
+    const amount = Number((cells[6]||'').trim());
+
+    const date = parseDateFlexible(rawDate);
+    if(!date){ errors.push(`Line ${lineNo}: unrecognized date "${rawDate}" — skipped.`); continue; }
+    if(!accountCode){ errors.push(`Line ${lineNo}: missing account code — skipped.`); continue; }
+    const account = State.accounts.find(a=>a.code===accountCode && a.active);
+    if(!account){ errors.push(`Line ${lineNo}: account code "${accountCode}" not found or inactive — skipped.`); continue; }
+    if(!amount || amount<=0){ errors.push(`Line ${lineNo}: invalid amount "${cells[6]||''}" — skipped.`); continue; }
+
+    rows.push({ date, recipient, description, department, accountCode, account, voucher, amount });
+  }
+  return { rows, errors };
+}
+/* Formats a JS Date as YYYY-MM-DD using UTC parts, avoiding local-timezone
+   day-shifting when SheetJS hands back a Date object for a date cell. */
+/* Reads an image file and resizes it (preserving aspect ratio) down to
+   maxWidth, returning {dataUrl, width, height} — keeps logos small
+   regardless of what the person actually uploads. */
+function resizeImageFile(file, maxWidth){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('Could not read the file'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error('Could not load that as an image'));
+      img.onload = ()=>{
+        const scale = Math.min(1, maxWidth / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve({ dataUrl: canvas.toDataURL('image/png'), width:w, height:h });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function formatDateUTC(d){
+  const y = d.getUTCFullYear(), m = String(d.getUTCMonth()+1).padStart(2,'0'), day = String(d.getUTCDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+/* Parses rows from an uploaded Excel/CSV file (array-of-arrays from SheetJS'
+   sheet_to_json with header:1). Cell values may be native types (Date
+   objects, numbers) rather than plain text, unlike the pasted-CSV path. */
+const TXN_HEADER_ALIASES = {
+  date: ['date'],
+  recipient: ['recipient','recipient name','payee'],
+  description: ['description','description or purpose for payment','purpose'],
+  department: ['department','dept'],
+  accountCode: ['account code','accountcode','expense account'],
+  voucher: ['voucher','voucher no','voucher no.','voucher serial no','voucher serial no.','voucher serial number'],
+  amount: ['amount','paid amount','amount paid'],
+};
+function normalizeHeader(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' ').replace(/\.$/,''); }
+/* Maps a header row to column indices by name, so uploads work whether the
+   file is the simple template or a full Reports export (extra columns like
+   Txn ID, Account Name, Batch, Status, User are simply ignored). */
+function mapTxnHeaders(headerRow){
+  const normalized = (headerRow||[]).map(normalizeHeader);
+  const map = {};
+  for(const field in TXN_HEADER_ALIASES){
+    for(const alias of TXN_HEADER_ALIASES[field]){
+      const idx = normalized.indexOf(alias);
+      if(idx !== -1){ map[field] = idx; break; }
+    }
+  }
+  return map;
+}
+function parseTransactionRows(rowsRaw){
+  if(!rowsRaw || rowsRaw.length===0) return { rows:[], errors:[] };
+
+  // Try to detect a real header row by name; fall back to the original
+  // fixed column order (Date, Recipient, Description, Department,
+  // Account Code, Voucher, Amount) if no recognizable headers are found.
+  let colMap = mapTxnHeaders(rowsRaw[0]);
+  let start = 0;
+  const looksLikeHeader = colMap.date!==undefined && colMap.accountCode!==undefined && colMap.amount!==undefined;
+  if(looksLikeHeader){
+    start = 1;
+  } else {
+    colMap = { date:0, recipient:1, description:2, department:3, accountCode:4, voucher:5, amount:6 };
+  }
+
+  const rows = [], errors = [];
+  for(let i=start;i<rowsRaw.length;i++){
+    const r = rowsRaw[i];
+    const lineNo = i+1;
+    if(!r || r.every(c=>c==='' || c===null || c===undefined)) continue; // skip blank rows
+    const get = (field)=> colMap[field]!==undefined ? r[colMap[field]] : '';
+    const rawDate = get('date');
+    const recipient = String(get('recipient')||'').trim();
+    const description = String(get('description')||'').trim();
+    const department = String(get('department')||'').trim();
+    const accountCode = String(get('accountCode')||'').trim();
+    const voucher = String(get('voucher')||'').trim();
+    const rawAmount = get('amount');
+
+    let date = null;
+    if(rawDate instanceof Date && !isNaN(rawDate)) date = formatDateUTC(rawDate);
+    else if(typeof rawDate === 'string') date = parseDateFlexible(rawDate);
+    if(!date){ errors.push(`Row ${lineNo}: unrecognized date "${rawDate}" — skipped.`); continue; }
+
+    if(!accountCode){ errors.push(`Row ${lineNo}: missing account code — skipped.`); continue; }
+    const account = State.accounts.find(a=>a.code===accountCode && a.active);
+    if(!account){ errors.push(`Row ${lineNo}: account code "${accountCode}" not found or inactive — skipped.`); continue; }
+
+    const amount = typeof rawAmount === 'number' ? rawAmount : Number(String(rawAmount||'').replace(/,/g,''));
+    if(!amount || amount<=0){ errors.push(`Row ${lineNo}: invalid amount "${rawAmount}" — skipped.`); continue; }
+
+    rows.push({ date, recipient, description, department, accountCode, account, voucher, amount });
+  }
+  return { rows, errors };
+}
+function downloadCSV(filename, rows){
+  const blob = new Blob([toCSV(rows)], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function renderReports(){
+  const tab = State.activeTab.reports;
+  const txns = filteredExpenseTxns();
+  const total = txns.reduce((s,t)=>s+Number(t.amount||0),0);
+  const tabs = [
+    {id:'account', label:'By Expense Account'},
+    {id:'department', label:'By Department'},
+    {id:'transactions', label:'All Transactions'},
+  ];
+
+  let body = '';
+  if(tab==='account'){
+    const lines = groupByAccount(txns);
+    body = `
+    <table>
+      <thead><tr><th>Code</th><th>Account</th><th style="text-align:right;">Amount</th></tr></thead>
+      <tbody>
+        ${lines.length===0?`<tr class="empty-row"><td colspan="3">No transactions in this range.</td></tr>`:
+          lines.map(l=>`<tr><td class="mono">${escapeHtml(l.code)}</td><td>${escapeHtml(l.name)}</td><td style="text-align:right;">${fmtGHS(l.amount)}</td></tr>`).join('')}
+        <tr><td></td><td style="text-align:right;font-weight:600;">Total</td><td style="text-align:right;font-weight:600;">${fmtGHS(total)}</td></tr>
+      </tbody>
+    </table>`;
+  } else if(tab==='department'){
+    const map = {};
+    txns.forEach(t=>{ const d=t.department||'Unassigned'; map[d]=(map[d]||0)+Number(t.amount||0); });
+    const lines = Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));
+    body = `
+    <table>
+      <thead><tr><th>Department</th><th style="text-align:right;">Amount</th></tr></thead>
+      <tbody>
+        ${lines.length===0?`<tr class="empty-row"><td colspan="2">No transactions in this range.</td></tr>`:
+          lines.map(([d,amt])=>`<tr><td>${escapeHtml(d)}</td><td style="text-align:right;">${fmtGHS(amt)}</td></tr>`).join('')}
+        <tr><td style="text-align:right;font-weight:600;">Total</td><td style="text-align:right;font-weight:600;">${fmtGHS(total)}</td></tr>
+      </tbody>
+    </table>`;
+  } else {
+    const rows = txns.slice().sort((a,b)=>(a.date+a.createdAt).localeCompare(b.date+b.createdAt));
+    body = `
+    <table>
+      <thead><tr><th>Txn ID</th><th>Date</th><th>Recipient</th><th>Department</th><th>Account</th><th>Batch</th><th>Voucher</th><th style="text-align:right;">Amount</th><th>Status</th></tr></thead>
+      <tbody>
+        ${rows.length===0?`<tr class="empty-row"><td colspan="9">No transactions in this range.</td></tr>`:
+          rows.map(t=>`<tr>
+            <td class="mono">${escapeHtml(t.id)}</td><td>${t.date}</td><td>${escapeHtml(t.recipient)}</td>
+            <td>${escapeHtml(t.department||'—')}</td><td style="font-size:12.5px;">${escapeHtml(accountLabel({code:t.accountCode,name:t.accountName,category:t.accountCategory}))}</td>
+            <td class="mono">${t.batchNumber?escapeHtml(t.batchNumber):'—'}</td><td class="mono">${escapeHtml(t.voucher||'—')}</td>
+            <td style="text-align:right;">${fmtGHS(t.amount)}</td><td>${statusBadge(t.status)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+  }
+
+  return `
+  <div class="page-head">
+    <h1>Reports</h1>
+    <p>Filter by date range, then export any view to CSV for Excel or your accounting system.</p>
+  </div>
+  <div class="toolbar">
+    <label style="font-size:12.5px;color:var(--text-muted);">From <input type="date" id="reportFrom" value="${escapeAttr(State.reportFilters.from)}" style="padding:7px 8px;border:1px solid var(--line);margin-left:4px;"></label>
+    <label style="font-size:12.5px;color:var(--text-muted);">To <input type="date" id="reportTo" value="${escapeAttr(State.reportFilters.to)}" style="padding:7px 8px;border:1px solid var(--line);margin-left:4px;"></label>
+    <button type="button" class="btn btn-ghost btn-sm" data-action="apply-report-filter">Apply</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-action="clear-report-filter">Clear</button>
+    <button type="button" class="btn btn-gold btn-sm" data-action="export-report" style="margin-left:auto;">Export CSV</button>
+  </div>
+  <div class="tabs">
+    ${tabs.map(t=>`<div class="tab ${tab===t.id?'active':''}" data-report-tab="${t.id}">${t.label}</div>`).join('')}
+  </div>
+  <div class="panel"><div class="panel-body">${body}</div></div>
+  `;
+}
+
+
+/* ---------------- MODAL ---------------- */
+function renderModal(){
+  const m = State.modal;
+  if(m.type === 'account') return renderAccountModal(m);
+  if(m.type === 'user') return renderUserModal(m);
+  if(m.type === 'reimbursement') return renderReimbursementModal(m);
+  if(m.type === 'import-accounts') return renderImportAccountsModal();
+  if(m.type === 'upload-txn') return renderUploadTxnModal();
+  if(m.type === 'register-batch') return renderRegisterBatchModal();
+  return '';
+}
+function renderRegisterBatchModal(){
+  const today = new Date().toISOString().slice(0,10);
+  return `
+  <div class="modal-overlay" data-close-modal>
+    <div class="modal" data-stop>
+      <div class="modal-head">
+        <h3>Register an Existing Batch Number</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <form id="registerBatchForm">
+        <div class="modal-body">
+          <div class="note-box" style="margin-bottom:14px;">Use this only when a batch number was already started outside the app's normal numbering (e.g. on paper, or before this system was in use). It won't affect the next auto-generated batch number.</div>
+          <div class="field"><label>Batch Number</label>
+            <input type="text" name="batchNumber" placeholder="e.g. PC-BATB012" required>
+          </div>
+          <div class="field"><label>Batch Date</label>
+            <input type="date" name="batchDate" value="${today}" required>
+          </div>
+          <div class="field"><label>Remarks (optional)</label>
+            <input type="text" name="remarks" placeholder="e.g. Started manually before batch numbering was standardized">
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+          <button type="submit" class="btn btn-gold">Register &amp; Use as Working Batch</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+function renderUploadTxnModal(){
+  const b = activeBatch();
+  return `
+  <div class="modal-overlay" data-close-modal>
+    <div class="modal" data-stop style="max-width:600px;">
+      <div class="modal-head">
+        <h3>Upload Transactions</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="note-box" style="margin-bottom:14px;">
+          Every row will be filed under the current Working Batch: <b class="mono">${b?escapeHtml(b.batchNumber):'—'}</b>.
+        </div>
+        <div style="border:1px dashed var(--line);padding:16px;margin-bottom:16px;text-align:center;">
+          <div style="font-size:13.5px;margin-bottom:10px;">Don't have a file ready yet?</div>
+          <button type="button" class="btn btn-ghost btn-sm" data-action="download-txn-template">⬇ Download Excel Template</button>
+          <div class="hint" style="margin-top:8px;">Opens straight in Excel — fill in your rows, save, then upload it below.</div>
+        </div>
+        <div class="field">
+          <label>Excel or CSV file</label>
+          <input type="file" id="txnFileInput" accept=".xlsx,.xls,.csv">
+          <div class="hint">Works with the template below, or a file exported straight from Reports — the app reads columns by name, so extra columns like Txn ID, Account Name, Batch, Status, or User are simply ignored. Required: Date, Account Code, Amount. Date as YYYY-MM-DD or DD/MM/YYYY. Account Code must match an existing, active Account Master code exactly.</div>
+        </div>
+        <div id="uploadTxnStatus" style="margin-top:10px;font-size:13px;color:var(--text-muted);"></div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <button type="button" class="btn btn-gold" data-action="do-upload-txn">Upload</button>
+      </div>
+    </div>
+  </div>`;
+}
+function renderImportAccountsModal(){
+  const template = `code,name,category,active
+26000,Cost of Goods Sold (Item Costing - unused),26000-COST OF SALES,false
+27001,Opening Inventory,26000-COST OF SALES,false
+27002,Overseas Purchases,26000-COST OF SALES,false
+27009-1,Customs Clearing & Handling,26000-COST OF SALES,false
+27009-2,Customs Duty,26000-COST OF SALES,false
+27011,Off-Loading Expenses,26000-COST OF SALES,false
+27100,Less: Closing Inventory,26000-COST OF SALES,false
+30001,Staff Salaries,30000-STAFF COSTS,false
+300010,Directors' Fees & Expenses,30000-STAFF COSTS,false
+30002,Executive Directors' Salaries,30000-STAFF COSTS,false
+30003,Allowances,30000-STAFF COSTS,false
+30004,Bonus & Other Incentives,30000-STAFF COSTS,false
+30005,Employer SSF Contribution,30000-STAFF COSTS,false
+30006,Provident Fund - Employer,30000-STAFF COSTS,false
+30007,National Service Allowances,30000-STAFF COSTS,false
+30030,Warehouse Rent,30000-STAFF COSTS,false
+31000-1,Amortisation Expense,31000-FINANCE COSTS,false
+31001,Interest on Loans,31000-FINANCE COSTS,false
+31002,Bank Charges & Interest,31000-FINANCE COSTS,false
+32001,Printing & Stationery,32000-ADMIN & GENERAL EXPENSES,true
+32001-2,Office Improvements,32000-ADMIN & GENERAL EXPENSES,true
+32001-3,Office Renovation,32000-ADMIN & GENERAL EXPENSES,true
+32002-1,Lubricant,32000-ADMIN & GENERAL EXPENSES,true
+32002-2,Vehicle Fuel,32000-ADMIN & GENERAL EXPENSES,true
+32003,Education & Training,32000-ADMIN & GENERAL EXPENSES,true
+32004,Medical Expenses,32000-ADMIN & GENERAL EXPENSES,true
+32005-1,Repairs & Maintenance - Computers & Accessories,32000-ADMIN & GENERAL EXPENSES:32005-REPAIRS & MAINTENANCE,true
+32005-2,Repairs & Maintenance - Furniture & Fittings,32000-ADMIN & GENERAL EXPENSES:32005-REPAIRS & MAINTENANCE,true
+32005-3,Repairs & Maintenance - Motor Vehicles,32000-ADMIN & GENERAL EXPENSES:32005-REPAIRS & MAINTENANCE,true
+32005-4,Repairs & Maintenance - Equipment,32000-ADMIN & GENERAL EXPENSES:32005-REPAIRS & MAINTENANCE,true
+32005-5,Repairs & Maintenance - Buildings,32000-ADMIN & GENERAL EXPENSES:32005-REPAIRS & MAINTENANCE,true
+32005-6,Repairs & Maintenance - Software,32000-ADMIN & GENERAL EXPENSES:32005-REPAIRS & MAINTENANCE,true
+32007,Professional Services,32000-ADMIN & GENERAL EXPENSES,true
+32008,Registration & Licences,32000-ADMIN & GENERAL EXPENSES,true
+32009,Trade Association Subscriptions,32000-ADMIN & GENERAL EXPENSES,true
+32011,Corporate Social Responsibility,32000-ADMIN & GENERAL EXPENSES,true
+32012-1,Office Supplies & Expenses,32000-ADMIN & GENERAL EXPENSES,true
+32013-A,Travel & Transportation - Local,32000-ADMIN & GENERAL EXPENSES:32013-TRAVEL & TRANSPORTATION,true
+32013-B,Travel & Transportation - Foreign,32000-ADMIN & GENERAL EXPENSES:32013-TRAVEL & TRANSPORTATION,true
+32014,Generator Fuel,32000-ADMIN & GENERAL EXPENSES,true
+32015,Advertising & Promotional Materials,32000-ADMIN & GENERAL EXPENSES,true
+32017,"Seminars, Conferences, Meetings",32000-ADMIN & GENERAL EXPENSES,true
+32018,Property Rates,32000-ADMIN & GENERAL EXPENSES,true
+32019,"Telephone, Internet & Postage",32000-ADMIN & GENERAL EXPENSES,true
+32020-1,Utilities - Electricity,32000-ADMIN & GENERAL EXPENSES:32020-UTILITIES,true
+32020-2,Utilities - Water,32000-ADMIN & GENERAL EXPENSES:32020-UTILITIES,true
+32021,Permits & Processing Fees,32000-ADMIN & GENERAL EXPENSES,true
+32022,Insurance,32000-ADMIN & GENERAL EXPENSES,true
+32023,Hotel & Accommodation,32000-ADMIN & GENERAL EXPENSES,true
+32024,Drug Registration,32000-ADMIN & GENERAL EXPENSES,true
+32026,Cleaning & Sanitation,32000-ADMIN & GENERAL EXPENSES,true
+32027,Audit Fee (P&L),32000-ADMIN & GENERAL EXPENSES,true
+32028,Depreciation (Contra/Adjustment),32000-ADMIN & GENERAL EXPENSES,false
+32028-2,Interest on Leased Asset,32000-ADMIN & GENERAL EXPENSES,false
+32028-3,Current Depreciation,32000-ADMIN & GENERAL EXPENSES,false
+32030-2,Provision for Bad Debts,32000-ADMIN & GENERAL EXPENSES,false
+32030-3,Exchange Losses,32000-ADMIN & GENERAL EXPENSES,false
+32031,Internal Loading & Packaging,32000-ADMIN & GENERAL EXPENSES,true
+32032,Battery Cage Fixing Expenses,32000-ADMIN & GENERAL EXPENSES,true
+32034,Warehouse Expenses,32000-ADMIN & GENERAL EXPENSES,true
+33005-1,Statutory Levies,33000-STATUTORY & LEVIES,false`;
+  return `
+  <div class="modal-overlay" data-close-modal>
+    <div class="modal" data-stop style="max-width:640px;">
+      <div class="modal-head">
+        <h3>Import / Update Chart of Accounts</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <form id="importAccountsForm">
+        <div class="modal-body">
+          <p style="font-size:13px;color:var(--text-muted);margin-top:0;">CSV format: <span class="mono">code,name,category,active</span> — one line per account, first line is the header. This box is pre-filled with your uploaded Chart of Accounts (Expense-type only). Codes that already exist will have their name/category updated but keep their current Active/Inactive setting; new codes are added using the "active" column below. Nothing already in your system gets deleted.</p>
+          <textarea name="csv" rows="14" style="width:100%;padding:10px 12px;font-family:var(--mono);font-size:11.5px;border:1px solid var(--line);white-space:pre;">${escapeHtml(template)}</textarea>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+          <button type="submit" class="btn btn-gold">Import</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+function renderReimbursementModal(){
+  return `
+  <div class="modal-overlay" data-close-modal>
+    <div class="modal" data-stop>
+      <div class="modal-head">
+        <h3>Record Reimbursement Received</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <form id="reimbursementForm">
+        <div class="modal-body">
+          <div class="field"><label>Date Received</label><input type="date" name="date" value="${new Date().toISOString().slice(0,10)}" required></div>
+          <div class="field"><label>Amount (GHS)</label><input type="number" step="0.01" min="0.01" name="amount" required></div>
+          <div class="field"><label>Remarks</label><input type="text" name="remarks" placeholder="e.g. Cheque no. / bank reference"></div>
+          <div class="note-box">This restores the ledger balance toward the approved float. The full reimbursement request &amp; authorization workflow arrives in Phase 3 — this records the cash actually received in the meantime.</div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+          <button type="submit" class="btn btn-gold">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+function renderAccountModal(m){
+  const d = m.data;
+  return `
+  <div class="modal-overlay" data-close-modal>
+    <div class="modal" data-stop>
+      <div class="modal-head">
+        <h3>${m.mode==='new'?'New Account Code':'Edit Account Code'}</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <form id="accountForm">
+        <div class="modal-body">
+          <div class="field"><label>Account Code</label>
+            <input type="text" name="code" value="${escapeAttr(d.code||'')}" ${m.mode==='edit'?'readonly':''} required>
+          </div>
+          <div class="field"><label>Account Name</label>
+            <input type="text" name="name" value="${escapeAttr(d.name||'')}" required>
+          </div>
+          <div class="field"><label>Category (optional)</label>
+            <input type="text" name="category" value="${escapeAttr(d.category||'')}" placeholder="e.g. 32000-ADMIN & GENERAL EXPENSES">
+            <div class="hint">Shown before the code in the ledger's account dropdown, matching your existing chart of accounts.</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+          <button type="submit" class="btn btn-gold">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+function renderUserModal(m){
+  const d = m.data;
+  return `
+  <div class="modal-overlay" data-close-modal>
+    <div class="modal" data-stop>
+      <div class="modal-head">
+        <h3>${m.mode==='new'?'New User':'Edit User'}</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <form id="userForm">
+        <div class="modal-body">
+          <div class="field"><label>Username</label>
+            <input type="text" name="username" value="${escapeAttr(d.username||'')}" ${m.mode==='edit'?'readonly':''} required>
+          </div>
+          <div class="field"><label>Full Name</label>
+            <input type="text" name="fullName" value="${escapeAttr(d.fullName||'')}" required>
+          </div>
+          <div class="field"><label>Role</label>
+            <select name="role">
+              <option value="Petty Cashier" ${d.role==='Petty Cashier'?'selected':''}>Petty Cashier</option>
+              <option value="Reviewer/Approver" ${d.role==='Reviewer/Approver'?'selected':''}>Reviewer/Approver</option>
+              <option value="Head of Finance" ${d.role==='Head of Finance'?'selected':''}>Head of Finance</option>
+              <option value="Admin" ${d.role==='Admin'?'selected':''}>Admin</option>
+            </select>
+          </div>
+          ${m.mode==='new' ? `
+          <div class="field"><label>Temporary Password</label>
+            <input type="password" name="password" minlength="${State.settings.security.minPasswordLength}" required>
+            <div class="hint">User should change this after first login.</div>
+          </div>` : ''}
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+          <button type="submit" class="btn btn-gold">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ============================= BIND EVENTS ============================= */
+function bindShell(){
+  document.querySelectorAll('[data-nav]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const id = el.getAttribute('data-nav');
+      if(id === 'logout'){ doLogout(); return; }
+      const flat = NAV.flatMap(g=>g.items);
+      const item = flat.find(i=>i.id===id);
+      if(!item) return;
+      if(item.phase > 1) return; // locked for now
+      if(item.perm && !can(item.perm)) return;
+      State.view = id;
+      render();
+    });
+  });
+
+  // search boxes
+  bindSearch('acctSearch','accounts');
+  bindSearch('userSearch','users');
+  bindSearch('auditSearch','audit');
+  bindSearch('txnSearch','txn');
+  const txnShowAllToggle = document.getElementById('txnShowAllToggle');
+  if(txnShowAllToggle){
+    txnShowAllToggle.addEventListener('change', ()=>{
+      State.txnShowAll = txnShowAllToggle.checked;
+      render();
+    });
+  }
+  bindSearch('batchSearch','batches');
+
+  // ---- ledger: multi-row save (existing edited rows + trailing new row) ----
+  const ledgerForm = document.getElementById('ledgerForm');
+  if(ledgerForm){
+    // Enter should feel like Excel: move to the next field in the row, and
+    // only actually save once you're on the last field. Previously Enter in
+    // ANY field instantly submitted the whole form and redrew the table,
+    // which could wipe out a row you hadn't finished typing yet.
+    ledgerForm.addEventListener('keydown', (e)=>{
+      if(e.key !== 'Enter') return;
+      const el = e.target;
+      if(el.tagName !== 'INPUT' && el.tagName !== 'SELECT') return;
+      e.preventDefault();
+      const row = el.closest('tr');
+      if(!row) return;
+      const fields = Array.from(row.querySelectorAll('input, select'));
+      const idx = fields.indexOf(el);
+      if(idx > -1 && idx < fields.length - 1){
+        fields[idx+1].focus();
+      } else {
+        ledgerForm.requestSubmit();
+      }
+    });
+    ledgerForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      let touched = false;
+      let batchesToRefresh = new Set();
+
+      // 1) save changes to existing editable rows (batch assignment is fixed, not editable here)
+      const existingRows = ledgerForm.querySelectorAll('tr[data-row-id]:not([data-row-id="_new"])');
+      for(const rowEl of existingRows){
+        const id = rowEl.getAttribute('data-row-id');
+        const t = State.transactions.find(x=>x.id===id);
+        if(!t) continue;
+        const get = name => rowEl.querySelector(`[name="${name}"]`)?.value ?? '';
+        const accountCode = get('accountCode');
+        const amount = Number(get('amount'));
+        if(!accountCode || !amount || amount<=0) continue; // incomplete row, skip
+        const account = State.accounts.find(a=>a.code===accountCode);
+        Object.assign(t, {
+          date:get('date'), recipient:get('recipient').trim(), description:get('description').trim(),
+          department:get('department'), accountCode, accountName:account.name, accountCategory:account.category||'',
+          voucher:get('voucher').trim(), amount,
+        });
+        touched = true;
+        if(t.batchNumber) batchesToRefresh.add(t.batchNumber);
+      }
+
+      // 2) create a new transaction from the trailing blank row, if filled in — always
+      //    filed under the current Working Batch, never chosen per line.
+      const newRowEl = ledgerForm.querySelector('tr[data-row-id="_new"]');
+      if(newRowEl){
+        const b = activeBatch();
+        if(!b){ alert('Select or start a batch before entering transactions.'); }
+        else {
+          const get = name => newRowEl.querySelector(`[name="${name}"]`)?.value ?? '';
+          const accountCode = get('accountCode');
+          const amount = Number(get('amount'));
+          if(accountCode && amount>0){
+            const account = State.accounts.find(a=>a.code===accountCode);
+            const dupe = State.transactions.find(t => t.status!=='VOIDED' && t.date===get('date') &&
+              Number(t.amount)===amount && (t.recipient||'').toLowerCase()===get('recipient').trim().toLowerCase() && t.accountCode===accountCode);
+            let proceed = true;
+            if(dupe) proceed = confirm(`A similar transaction already exists (${dupe.id}, ${dupe.date}, ${fmtGHS(dupe.amount)} to ${dupe.recipient}). Save this row anyway?`);
+            if(proceed){
+              const id = await nextNumber('txn');
+              const {date, time, iso} = nowParts();
+              const t = {
+                id, type:'EXPENSE', date:get('date'), recipient:get('recipient').trim(), description:get('description').trim(),
+                department:get('department'), accountCode, accountName:account.name, accountCategory:account.category||'',
+                batchNumber:b.batchNumber, voucher:get('voucher').trim(), amount, status:'DRAFT',
+                userId:State.currentUser.id, userName:State.currentUser.fullName, dateCreated:date, timeCreated:time, createdAt:iso,
+              };
+              State.transactions.push(t);
+              touched = true;
+              batchesToRefresh.add(b.batchNumber);
+              await logAudit('Transaction created', '—', `${id} — ${fmtGHS(amount)} — ${account.name} — Batch ${b.batchNumber}`);
+            }
+          }
+        }
+      }
+
+      if(touched){
+        await storeSet(K.transactions, State.transactions);
+        for(const bn of batchesToRefresh) await refreshBatch(bn);
+      }
+      render();
+    });
+  }
+
+  // ---- working batch selector ----
+  document.querySelectorAll('[data-action="use-working-batch"]').forEach(b=>b.addEventListener('click', ()=>{
+    const sel = document.getElementById('workingBatchSelect');
+    if(!sel || !sel.value){ alert('Choose a batch from the list first.'); return; }
+    State.activeBatchNumber = sel.value;
+    render();
+  }));
+  document.querySelectorAll('[data-action="change-working-batch"]').forEach(b=>b.addEventListener('click', ()=>{
+    State.activeBatchNumber = '';
+    render();
+  }));
+  document.querySelectorAll('[data-action="start-new-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const batchNumber = await nextNumber('batch');
+    const {date} = nowParts();
+    const nb = {
+      batchNumber, batchDate: new Date().toISOString().slice(0,10),
+      preparedBy: State.currentUser.fullName, preparedById: State.currentUser.id,
+      numTransactions:0, totalAmount:0, status:'DRAFT',
+      reviewedBy:'', approvedBy:'', postingDate:'', accountingReference:'', postedBy:'',
+      remarks:'',
+    };
+    State.batches.push(nb);
+    await storeSet(K.batches, State.batches);
+    await logAudit('Batch created', '—', batchNumber);
+    State.activeBatchNumber = batchNumber;
+    render();
+  }));
+
+  document.querySelectorAll('[data-action="open-register-batch"]').forEach(b=>b.addEventListener('click', ()=>{
+    State.modal = {type:'register-batch'};
+    render();
+  }));
+  const registerBatchForm = document.getElementById('registerBatchForm');
+  if(registerBatchForm){
+    registerBatchForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(registerBatchForm);
+      const batchNumber = fd.get('batchNumber').trim();
+      const batchDate = fd.get('batchDate');
+      const remarks = fd.get('remarks').trim();
+      if(!batchNumber){ alert('Enter a batch number.'); return; }
+      if(State.batches.some(b=>b.batchNumber===batchNumber)){ alert(`Batch ${batchNumber} already exists in the system.`); return; }
+      const nb = {
+        batchNumber, batchDate,
+        preparedBy: State.currentUser.fullName, preparedById: State.currentUser.id,
+        numTransactions:0, totalAmount:0, status:'DRAFT',
+        reviewedBy:'', approvedBy:'', postingDate:'', accountingReference:'', postedBy:'',
+        remarks: remarks || 'Registered manually — started outside the app\'s auto-numbering.',
+      };
+      State.batches.push(nb);
+      const ok = await storeSet(K.batches, State.batches);
+      if(!ok){
+        State.batches.pop();
+        alert(`⚠️ Could not confirm this batch was saved (${ConnectionState.lastError}). Nothing was created — check your connection and try again.`);
+        render();
+        return;
+      }
+      await logAudit('Batch registered manually', '—', `${batchNumber} (${batchDate})`, remarks);
+      State.activeBatchNumber = batchNumber;
+      State.modal = null;
+      render();
+    });
+  }
+
+  // ---- reimbursement received ----
+  document.querySelectorAll('[data-action="new-reimbursement"]').forEach(b=>b.addEventListener('click', ()=>{
+    State.modal = {type:'reimbursement'};
+    render();
+  }));
+  const reimbForm = document.getElementById('reimbursementForm');
+  if(reimbForm){
+    reimbForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(reimbForm);
+      const amount = Number(fd.get('amount'));
+      if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+      const id = await nextNumber('txn');
+      const {date, time, iso} = nowParts();
+      const t = {
+        id, type:'REIMBURSEMENT', date:fd.get('date'), amount, remarks:fd.get('remarks').trim(),
+        status:'POSTED', userId:State.currentUser.id, userName:State.currentUser.fullName,
+        dateCreated:date, timeCreated:time, createdAt:iso,
+      };
+      State.transactions.push(t);
+      await storeSet(K.transactions, State.transactions);
+      await logAudit('Reimbursement recorded', '—', `${id} — ${fmtGHS(amount)}`);
+      State.modal = null;
+      render();
+    });
+  }
+
+  // ---- transaction void (works for both expense and reimbursement rows) ----
+  document.querySelectorAll('[data-action="void-txn"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const t = State.transactions.find(x=>x.id===id);
+    if(!t || t.status==='VOIDED') return;
+    const reason = prompt('Reason for voiding this transaction (required):');
+    if(!reason) return;
+    const oldStatus = t.status;
+    t.status = 'VOIDED';
+    t.voidReason = reason;
+    t.voidedBy = State.currentUser.fullName;
+    t.voidedAt = nowParts().iso;
+    await storeSet(K.transactions, State.transactions);
+    if(t.batchNumber) await refreshBatch(t.batchNumber);
+    await logAudit('Transaction voided', oldStatus, 'VOIDED', `${t.id} — ${reason}`);
+    render();
+  }));
+
+  // ---- batch create form ----
+  const batchForm = document.getElementById('batchForm');
+  if(batchForm){
+    batchForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(batchForm);
+      const batchNumber = await nextNumber('batch');
+      const b = {
+        batchNumber, batchDate: fd.get('batchDate'),
+        preparedBy: State.currentUser.fullName, preparedById: State.currentUser.id,
+        numTransactions:0, totalAmount:0, status:'DRAFT',
+        reviewedBy:'', approvedBy:'', postingDate:'', accountingReference:'', postedBy:'',
+        remarks: fd.get('remarks').trim(),
+      };
+      State.batches.push(b);
+      await storeSet(K.batches, State.batches);
+      await logAudit('Batch created', '—', batchNumber);
+      State.view = 'viewbatches';
+      render();
+    });
+  }
+
+  // ---- batch actions ----
+  document.querySelectorAll('[data-action="submit-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    await setBatchStatus(b.getAttribute('data-batch'), 'SUBMITTED');
+    render();
+  }));
+  document.querySelectorAll('[data-action="clear-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const bn = b.getAttribute('data-batch');
+    const batch = State.batches.find(x=>x.batchNumber===bn);
+    if(!batch) return;
+    if(batchLockedByReimbursement(bn)){ alert('This batch can no longer be cleared — its reimbursement has already been paid.'); return; }
+    const count = State.transactions.filter(t=>t.batchNumber===bn).length;
+    const confirmText = prompt(`This permanently removes all ${count} transaction(s) currently in ${bn}, so you can upload a corrected list. This cannot be undone.\n\nType CLEAR to confirm:`);
+    if(confirmText !== 'CLEAR') return;
+
+    const before = State.transactions;
+    State.transactions = State.transactions.filter(t=>t.batchNumber!==bn);
+    batch.numTransactions = 0;
+    batch.totalAmount = 0;
+    const ok1 = await storeSet(K.transactions, State.transactions);
+    const ok2 = await storeSet(K.batches, State.batches);
+    if(!ok1 || !ok2){
+      State.transactions = before;
+      batch.numTransactions = count;
+      alert(`⚠️ Could not confirm this was saved (${ConnectionState.lastError}). Nothing was cleared — try again.`);
+      render();
+      return;
+    }
+    await logAudit('Batch cleared for re-upload', `${count} transaction(s)`, '0 transactions', `Batch ${bn}`);
+    State.activeBatchNumber = bn;
+    State.view = 'txnregister';
+    State.modal = {type:'upload-txn'};
+    render();
+  }));
+  document.querySelectorAll('[data-action="approve-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const bn = b.getAttribute('data-batch');
+    const batch = State.batches.find(x=>x.batchNumber===bn);
+    batch.reviewedBy = State.currentUser.fullName;
+    batch.approvedBy = State.currentUser.fullName;
+    await setBatchStatus(bn, 'APPROVED');
+    render();
+  }));
+  document.querySelectorAll('[data-action="return-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const bn = b.getAttribute('data-batch');
+    const reason = prompt('Reason for returning this batch (required):');
+    if(!reason) return;
+    const batch = State.batches.find(x=>x.batchNumber===bn);
+    batch.reviewedBy = State.currentUser.fullName;
+    batch.remarks = (batch.remarks ? batch.remarks + ' | ' : '') + 'Returned: ' + reason;
+    await setBatchStatus(bn, 'REJECTED');
+    render();
+  }));
+  document.querySelectorAll('[data-action="reopen-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const bn = b.getAttribute('data-batch');
+    const batch = State.batches.find(x=>x.batchNumber===bn);
+    batch.reviewedBy=''; batch.approvedBy='';
+    await setBatchStatus(bn, 'DRAFT');
+    render();
+  }));
+  document.querySelectorAll('[data-action="view-posting"]').forEach(b=>b.addEventListener('click', ()=>{
+    State.postingSummaryBatch = b.getAttribute('data-batch');
+    State.view = 'postingsummary';
+    render();
+  }));
+
+  // ---- posting summary ----
+  const postingBatchSelect = document.getElementById('postingBatchSelect');
+  if(postingBatchSelect){
+    postingBatchSelect.addEventListener('change', ()=>{
+      State.postingSummaryBatch = postingBatchSelect.value;
+      render();
+    });
+  }
+  const postingRefForm = document.getElementById('postingRefForm');
+  if(postingRefForm){
+    postingRefForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(postingRefForm);
+      const bn = State.postingSummaryBatch;
+      const batch = State.batches.find(b=>b.batchNumber===bn);
+      batch.accountingReference = fd.get('accountingReference').trim();
+      batch.postingDate = fd.get('postingDate');
+      batch.postedBy = State.currentUser.fullName;
+      const remark = fd.get('remarks').trim();
+      batch.remarks = (batch.remarks ? batch.remarks + ' | ' : '') + (remark ? 'Posting: ' + remark : '');
+      await setBatchStatus(bn, 'POSTED');
+      render();
+    });
+  }
+
+  // ---- cash count: live denomination totals ----
+  const cashCountForm = document.getElementById('cashCountForm');
+  if(cashCountForm){
+    const systemBalance = Number(cashCountForm.dataset.systemBalance);
+    const tolerance = Number(cashCountForm.dataset.tolerance);
+    const recalc = ()=>{
+      let total = 0;
+      cashCountForm.querySelectorAll('.denom-qty').forEach(inp=>{
+        const denom = Number(inp.getAttribute('data-denom'));
+        const qty = Number(inp.value)||0;
+        const line = denom*qty;
+        total += line;
+        const lineCell = cashCountForm.querySelector(`[data-denom-line="${denom}"]`);
+        if(lineCell) lineCell.textContent = fmtGHS(line);
+      });
+      const grandTotalEl = document.getElementById('denomGrandTotal');
+      if(grandTotalEl) grandTotalEl.textContent = fmtGHS(total);
+      const totalDisplay = document.getElementById('cashCountTotalDisplay');
+      if(totalDisplay) totalDisplay.textContent = fmtGHS(total);
+      const variance = total - systemBalance;
+      const varDisplay = document.getElementById('cashCountVarianceDisplay');
+      if(varDisplay){
+        varDisplay.textContent = fmtGHS(variance);
+        varDisplay.style.color = Math.abs(variance)>tolerance ? 'var(--red)' : 'var(--green)';
+      }
+    };
+    cashCountForm.querySelectorAll('.denom-qty').forEach(inp=>inp.addEventListener('input', recalc));
+    recalc();
+
+    cashCountForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const denominations = {};
+      let totalCounted = 0;
+      cashCountForm.querySelectorAll('.denom-qty').forEach(inp=>{
+        const denom = Number(inp.getAttribute('data-denom'));
+        const qty = Number(inp.value)||0;
+        if(qty>0) denominations[denom] = qty;
+        totalCounted += denom*qty;
+      });
+      const variance = totalCounted - systemBalance;
+      const withinTolerance = Math.abs(variance) <= tolerance;
+      const remarks = new FormData(cashCountForm).get('remarks').trim();
+      if(!remarks){ alert('Please add a remark before saving — e.g. "Good" if the count is balanced, or an explanation if there\'s a variance.'); return; }
+      const id = await nextNumber('cashcount');
+      const {date, time, iso} = nowParts();
+      const record = { id, date, time, createdAt:iso, denominations, totalCounted, systemBalance, variance, withinTolerance, countedBy: State.currentUser.fullName, remarks };
+      State.cashCounts.push(record);
+      await storeSet(K.cashCounts, State.cashCounts);
+      await logAudit('Cash count recorded', fmtGHS(systemBalance), fmtGHS(totalCounted), withinTolerance ? 'Balanced' : `Variance ${fmtGHS(variance)} — ${remarks}`);
+      render();
+    });
+  }
+
+  // ---- reimbursement select ----
+  const reimbSelect = document.getElementById('reimbSelect');
+  if(reimbSelect){
+    reimbSelect.addEventListener('change', ()=>{
+      State.activeReimbursementId = reimbSelect.value;
+      render();
+    });
+  }
+
+  // ---- reimbursement lifecycle ----
+  document.querySelectorAll('[data-action="create-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const eligible = eligibleForReimbursement();
+    if(eligible.length===0){ alert('No unreimbursed transactions available.'); return; }
+    const dates = eligible.map(t=>t.date).sort();
+    const id = await nextNumber('reimb');
+    const {date, iso} = nowParts();
+    const totalAmount = eligible.reduce((s,t)=>s+Number(t.amount||0),0);
+    const r = {
+      id, status:'DRAFT', requestDate:date, requestedBy:State.currentUser.fullName, requestedById:State.currentUser.id,
+      periodFrom:dates[0], periodTo:dates[dates.length-1], totalAmount, reviewedBy:'', remarks:'', createdAt:iso,
+      adjustmentAmount:0, adjustmentReason:'',
+    };
+    eligible.forEach(t=>{ t.reimbursementId = id; });
+    State.reimbursements.push(r);
+    await storeSet(K.reimbursements, State.reimbursements);
+    await storeSet(K.transactions, State.transactions);
+    await logAudit('Reimbursement request created', '—', `${id} — ${fmtGHS(totalAmount)}`);
+    State.activeReimbursementId = id;
+    State.view = 'reimbursement';
+    render();
+  }));
+  document.querySelectorAll('[data-action="cancel-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const r = State.reimbursements.find(x=>x.id===id);
+    if(!r || r.status!=='DRAFT') return;
+    if(!confirm('Cancel this draft reimbursement request? Its transactions will become eligible again.')) return;
+    State.transactions.filter(t=>t.reimbursementId===id).forEach(t=>{ delete t.reimbursementId; });
+    State.reimbursements = State.reimbursements.filter(x=>x.id!==id);
+    await storeSet(K.reimbursements, State.reimbursements);
+    await storeSet(K.transactions, State.transactions);
+    await logAudit('Reimbursement request cancelled', 'DRAFT', '—', id);
+    render();
+  }));
+  document.querySelectorAll('[data-action="submit-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const r = State.reimbursements.find(x=>x.id===id);
+    if(!r || r.status!=='DRAFT') return;
+    if(!reconciliationReady()){ alert('Perform at least one Cash Count before submitting.'); return; }
+    r.status = 'SUBMITTED';
+    await storeSet(K.reimbursements, State.reimbursements);
+    await logAudit('Reimbursement submitted for approval', 'DRAFT', 'SUBMITTED', id);
+    render();
+  }));
+  document.querySelectorAll('[data-action="approve-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const r = State.reimbursements.find(x=>x.id===id);
+    if(!r || r.status!=='SUBMITTED') return;
+    r.status = 'APPROVED';
+    r.reviewedBy = State.currentUser.fullName;
+    r.reviewedAt = nowParts().iso;
+    await storeSet(K.reimbursements, State.reimbursements);
+    await logAudit('Reimbursement approved (reconciled)', 'SUBMITTED', 'APPROVED', id);
+    render();
+  }));
+  document.querySelectorAll('[data-action="reject-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const r = State.reimbursements.find(x=>x.id===id);
+    if(!r || r.status!=='SUBMITTED') return;
+    const reason = prompt('Reason for rejecting this request (required):');
+    if(!reason) return;
+    r.status = 'REJECTED';
+    r.rejectReason = reason;
+    r.reviewedBy = State.currentUser.fullName;
+    r.reviewedAt = nowParts().iso;
+    await storeSet(K.reimbursements, State.reimbursements);
+    await logAudit('Reimbursement rejected', 'SUBMITTED', 'REJECTED', `${id} — ${reason}`);
+    render();
+  }));
+  document.querySelectorAll('[data-action="reopen-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const r = State.reimbursements.find(x=>x.id===id);
+    if(!r || r.status!=='REJECTED') return;
+    r.status = 'DRAFT';
+    await storeSet(K.reimbursements, State.reimbursements);
+    await logAudit('Reimbursement reopened to draft', 'REJECTED', 'DRAFT', id);
+    render();
+  }));
+  document.querySelectorAll('[data-action="print-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const r = State.reimbursements.find(x=>x.id===id);
+    if(!r) return;
+    if(reimbursementPrintBlocked()){
+      alert('The latest cash count variance is more than GHS 10 — perform a fresh, closer cash count before downloading the authorization document.');
+      return;
+    }
+    try{
+      generateReimbursementPDF(r);
+      await logAudit('Reimbursement PDF downloaded', '—', r.id);
+    }catch(err){
+      alert('Could not generate the PDF: ' + err.message);
+    }
+  }));
+  document.querySelectorAll('[data-action="download-reimbursement-docx"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const r = State.reimbursements.find(x=>x.id===id);
+    if(!r) return;
+    if(reimbursementPrintBlocked()){
+      alert('The latest cash count variance is more than GHS 10 — perform a fresh, closer cash count before downloading the authorization document.');
+      return;
+    }
+    try{
+      await generateReimbursementDocx(r);
+      await logAudit('Reimbursement Word document downloaded', '—', r.id);
+    }catch(err){
+      alert('Could not generate the Word document: ' + err.message);
+    }
+  }));
+  const adjustmentForm = document.getElementById('adjustmentForm');
+  if(adjustmentForm){
+    adjustmentForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const id = adjustmentForm.dataset.id;
+      const r = State.reimbursements.find(x=>x.id===id);
+      if(!r || r.status!=='DRAFT') return;
+      const fd = new FormData(adjustmentForm);
+      const amount = Number(fd.get('adjustmentAmount'))||0;
+      const reason = fd.get('adjustmentReason').trim();
+      if(amount > 0 && !reason){ alert('Add a reason for the adjustment (e.g. "Resetting float to GHS 50,000").'); return; }
+      if(amount > r.totalAmount){ alert(`Adjustment (${fmtGHS(amount)}) can't be more than Amount Spent (${fmtGHS(r.totalAmount)}).`); return; }
+      const before = { adjustmentAmount:r.adjustmentAmount, adjustmentReason:r.adjustmentReason };
+      r.adjustmentAmount = amount;
+      r.adjustmentReason = reason;
+      const ok = await storeSet(K.reimbursements, State.reimbursements);
+      if(!ok){
+        r.adjustmentAmount = before.adjustmentAmount;
+        r.adjustmentReason = before.adjustmentReason;
+        alert(`⚠️ Could not confirm this was saved (${ConnectionState.lastError}). Try again.`);
+        render();
+        return;
+      }
+      await logAudit('Reimbursement adjustment set', before.adjustmentAmount?fmtGHS(before.adjustmentAmount):'—', amount?`${fmtGHS(amount)} — ${reason}`:'—', id);
+      render();
+    });
+  }
+  const reimbPayForm = document.getElementById('reimbPayForm');
+  if(reimbPayForm){
+    reimbPayForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const id = reimbPayForm.dataset.id;
+      const r = State.reimbursements.find(x=>x.id===id);
+      if(!r || r.status!=='APPROVED') return;
+      const fd = new FormData(reimbPayForm);
+      r.paidRef = fd.get('paidRef').trim();
+      r.paidDate = fd.get('paidDate');
+      r.status = 'PAID';
+      r.paidBy = State.currentUser.fullName;
+      const netAmount = reimbursementNetAmount(r);
+      // credit the ledger with the net reimbursement amount (Amount Spent
+      // minus any one-time adjustment), not necessarily the raw total spent
+      const txnId = await nextNumber('txn');
+      const {date, time, iso} = nowParts();
+      const creditTxn = {
+        id:txnId, type:'REIMBURSEMENT', date:r.paidDate, amount:netAmount,
+        remarks:`Reimbursement ${r.id} — Ref ${r.paidRef}${r.adjustmentAmount?` (net of ${fmtGHS(r.adjustmentAmount)} adjustment)`:''}`, status:'POSTED',
+        userId:State.currentUser.id, userName:State.currentUser.fullName,
+        dateCreated:date, timeCreated:time, createdAt:iso, reimbursementRequestId:r.id,
+      };
+      State.transactions.push(creditTxn);
+      await storeSet(K.reimbursements, State.reimbursements);
+      await storeSet(K.transactions, State.transactions);
+      await logAudit('Reimbursement paid', 'APPROVED', 'PAID', `${id} — ${fmtGHS(netAmount)} — Ref ${r.paidRef}`);
+      render();
+    });
+  }
+
+  // ---- reports ----
+  document.querySelectorAll('[data-report-tab]').forEach(t=>t.addEventListener('click', ()=>{
+    State.activeTab.reports = t.getAttribute('data-report-tab');
+    render();
+  }));
+  const applyFilterBtn = document.querySelector('[data-action="apply-report-filter"]');
+  if(applyFilterBtn){
+    applyFilterBtn.addEventListener('click', ()=>{
+      State.reportFilters.from = document.getElementById('reportFrom').value;
+      State.reportFilters.to = document.getElementById('reportTo').value;
+      render();
+    });
+  }
+  const clearFilterBtn = document.querySelector('[data-action="clear-report-filter"]');
+  if(clearFilterBtn){
+    clearFilterBtn.addEventListener('click', ()=>{
+      State.reportFilters = {from:'', to:''};
+      render();
+    });
+  }
+  const exportBtn = document.querySelector('[data-action="export-report"]');
+  if(exportBtn){
+    exportBtn.addEventListener('click', ()=>{
+      const tab = State.activeTab.reports;
+      const txns = filteredExpenseTxns();
+      const stamp = new Date().toISOString().slice(0,10);
+      if(tab==='account'){
+        const lines = groupByAccount(txns);
+        downloadCSV(`expenses-by-account-${stamp}.csv`, [['Code','Account','Amount'], ...lines.map(l=>[l.code,l.name,l.amount.toFixed(2)])]);
+      } else if(tab==='department'){
+        const map = {};
+        txns.forEach(t=>{ const d=t.department||'Unassigned'; map[d]=(map[d]||0)+Number(t.amount||0); });
+        downloadCSV(`expenses-by-department-${stamp}.csv`, [['Department','Amount'], ...Object.entries(map).map(([d,a])=>[d,a.toFixed(2)])]);
+      } else {
+        downloadCSV(`transactions-${stamp}.csv`, [
+          ['Txn ID','Date','Recipient','Description','Department','Account Code','Account Name','Batch','Voucher','Amount','Status','User'],
+          ...txns.map(t=>[t.id,t.date,t.recipient,t.description,t.department||'',t.accountCode,t.accountName,t.batchNumber||'',t.voucher||'',Number(t.amount||0).toFixed(2),t.status,t.userName]),
+        ]);
+      }
+    });
+  }
+
+  // account actions
+  document.querySelectorAll('[data-action="new-account"]').forEach(b=>b.addEventListener('click', ()=>{
+    State.modal = {type:'account', mode:'new', data:{}};
+    render();
+  }));
+  document.querySelectorAll('[data-action="edit-account"]').forEach(b=>b.addEventListener('click', ()=>{
+    const code = b.getAttribute('data-code');
+    const acc = State.accounts.find(a=>a.code===code);
+    State.modal = {type:'account', mode:'edit', data:{...acc}};
+    render();
+  }));
+  document.querySelectorAll('[data-action="toggle-account"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const code = b.getAttribute('data-code');
+    const acc = State.accounts.find(a=>a.code===code);
+    const oldVal = acc.active ? 'ACTIVE' : 'INACTIVE';
+    acc.active = !acc.active;
+    const ok = await storeSet(K.accounts, State.accounts);
+    if(!ok){
+      acc.active = !acc.active; // roll back
+      alert(`⚠️ Could not confirm this change was saved (${ConnectionState.lastError}). Try again.`);
+      render();
+      return;
+    }
+    await logAudit('Account code status changed', oldVal, acc.active?'ACTIVE':'INACTIVE', `Code ${code}`);
+    render();
+  }));
+  document.querySelectorAll('[data-action="open-import-accounts"]').forEach(b=>b.addEventListener('click', ()=>{
+    State.modal = {type:'import-accounts'};
+    render();
+  }));
+  const importAccountsForm = document.getElementById('importAccountsForm');
+  if(importAccountsForm){
+    importAccountsForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const raw = new FormData(importAccountsForm).get('csv');
+      let parsed;
+      try{ parsed = parseAccountsCSV(raw); }
+      catch(err){ alert('Could not read that CSV: ' + err.message); return; }
+      if(parsed.length===0){ alert('No account rows found.'); return; }
+      const before = JSON.parse(JSON.stringify(State.accounts));
+      let added=0, updated=0;
+      parsed.forEach(row=>{
+        const existing = State.accounts.find(a=>a.code===row.code);
+        if(existing){
+          if(existing.name!==row.name || existing.category!==row.category) updated++;
+          existing.name = row.name;
+          existing.category = row.category;
+          // active status intentionally preserved, not overwritten
+        } else {
+          State.accounts.push({ code:row.code, name:row.name, category:row.category, active: row.active });
+          added++;
+        }
+      });
+      const ok = await storeSet(K.accounts, State.accounts);
+      if(!ok){
+        State.accounts = before; // roll back — the import never actually saved
+        alert(`⚠️ Could not confirm this import was saved (${ConnectionState.lastError}). Nothing was changed — check your connection and try again.`);
+        render();
+        return;
+      }
+      await logAudit('Chart of Accounts imported', '—', `${added} added, ${updated} updated`);
+      State.modal = null;
+      alert(`Import confirmed and saved: ${added} new account(s) added, ${updated} existing account(s) updated.`);
+      render();
+    });
+  }
+
+  document.querySelectorAll('[data-action="open-upload-txn"]').forEach(b=>b.addEventListener('click', ()=>{
+    if(!activeBatch()){ alert('Select or start a batch before uploading transactions.'); return; }
+    State.modal = {type:'upload-txn'};
+    render();
+  }));
+
+  const downloadTemplateBtn = document.querySelector('[data-action="download-txn-template"]');
+  if(downloadTemplateBtn){
+    downloadTemplateBtn.addEventListener('click', ()=>{
+      const today = new Date().toISOString().slice(0,10);
+      const sampleAccount = State.accounts.find(a=>a.active) || {code:'32001'};
+      const aoa = [
+        ['Date','Recipient','Description','Department','Account Code','Voucher','Amount'],
+        [today,'Jane Doe','Sample office supplies purchase','Admin',sampleAccount.code,'V-0001',150.00],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = [{wch:12},{wch:18},{wch:30},{wch:14},{wch:14},{wch:12},{wch:10}];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+      XLSX.writeFile(wb, 'petty-cash-transaction-template.xlsx');
+    });
+  }
+
+  const doUploadBtn = document.querySelector('[data-action="do-upload-txn"]');
+  if(doUploadBtn){
+    doUploadBtn.addEventListener('click', async ()=>{
+      const b = activeBatch();
+      if(!b){ alert('Your working batch is no longer open. Select or start a batch, then try again.'); State.modal=null; render(); return; }
+      const fileInput = document.getElementById('txnFileInput');
+      const file = fileInput && fileInput.files[0];
+      if(!file){ alert('Choose an Excel or CSV file first.'); return; }
+      const statusEl = document.getElementById('uploadTxnStatus');
+      if(statusEl) statusEl.textContent = 'Reading file…';
+
+      let rowsRaw;
+      try{
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, {type:'array', cellDates:true});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        rowsRaw = XLSX.utils.sheet_to_json(sheet, {header:1, raw:true, defval:''});
+      }catch(err){
+        if(statusEl) statusEl.textContent = '';
+        alert('Could not read that file — make sure it\'s a valid .xlsx, .xls, or .csv file.');
+        return;
+      }
+
+      const { rows, errors } = parseTransactionRows(rowsRaw);
+      if(rows.length===0){
+        if(statusEl) statusEl.textContent = '';
+        alert('No valid rows found in that file.' + (errors.length ? '\n\n' + errors.slice(0,10).join('\n') : ''));
+        return;
+      }
+
+      // Generate all transaction IDs locally, then save settings once — avoids
+      // one slow round-trip per row for potentially dozens of uploaded rows.
+      const s = State.settings.numbering;
+      const year = new Date().getFullYear();
+      let seq = s.nextTxnSeq;
+      const {date:today, time, iso} = nowParts();
+      const newTxns = rows.map(row=>{
+        const id = `${s.txnPrefix}-${year}-${String(seq).padStart(6,'0')}`;
+        seq++;
+        return {
+          id, type:'EXPENSE', date:row.date, recipient:row.recipient, description:row.description,
+          department:row.department, accountCode:row.accountCode, accountName:row.account.name, accountCategory:row.account.category||'',
+          batchNumber:b.batchNumber, voucher:row.voucher, amount:row.amount, status:'DRAFT',
+          userId:State.currentUser.id, userName:State.currentUser.fullName, dateCreated:today, timeCreated:time, createdAt:iso,
+        };
+      });
+      s.nextTxnSeq = seq;
+      State.transactions.push(...newTxns);
+      const ok1 = await storeSet(K.settings, State.settings);
+      const ok2 = await storeSet(K.transactions, State.transactions);
+      if(!ok1 || !ok2){
+        State.transactions.splice(State.transactions.length - newTxns.length, newTxns.length);
+        s.nextTxnSeq = seq - newTxns.length;
+        if(statusEl) statusEl.textContent = '';
+        alert(`⚠️ Could not confirm this upload was saved (${ConnectionState.lastError}). Nothing was created — check your connection and try again.`);
+        render();
+        return;
+      }
+      await refreshBatch(b.batchNumber);
+      const total = newTxns.reduce((sum,t)=>sum+Number(t.amount||0),0);
+      await logAudit('Transactions uploaded', '—', `${newTxns.length} row(s), ${fmtGHS(total)} — Batch ${b.batchNumber}`, errors.length ? `${errors.length} row(s) skipped` : '');
+      State.modal = null;
+      let msg = `Uploaded ${newTxns.length} transaction(s) into ${b.batchNumber}.`;
+      if(errors.length) msg += `\n\n${errors.length} row(s) skipped:\n` + errors.slice(0,10).join('\n') + (errors.length>10 ? `\n…and ${errors.length-10} more.` : '');
+      alert(msg);
+      render();
+    });
+  }
+
+  // user actions
+  document.querySelectorAll('[data-action="new-user"]').forEach(b=>b.addEventListener('click', ()=>{
+    State.modal = {type:'user', mode:'new', data:{}};
+    render();
+  }));
+  document.querySelectorAll('[data-action="edit-user"]').forEach(b=>b.addEventListener('click', ()=>{
+    const id = b.getAttribute('data-id');
+    const u = State.users.find(x=>x.id===id);
+    State.modal = {type:'user', mode:'edit', data:{...u}};
+    render();
+  }));
+  document.querySelectorAll('[data-action="toggle-user"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const u = State.users.find(x=>x.id===id);
+    if(u.id === State.currentUser.id){ alert("You can't disable your own account while logged in."); return; }
+    const oldVal = u.status;
+    u.status = u.status==='Active' ? 'Disabled' : 'Active';
+    await storeSet(K.users, State.users);
+    await logAudit('User status changed', oldVal, u.status, `User ${u.username}`);
+    render();
+  }));
+  document.querySelectorAll('[data-action="reset-pw"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const u = State.users.find(x=>x.id===id);
+    const newPw = prompt(`Enter a new temporary password for ${u.username} (min ${State.settings.security.minPasswordLength} chars):`);
+    if(newPw === null) return;
+    if(newPw.length < State.settings.security.minPasswordLength){ alert('Password too short.'); return; }
+    u.passwordHash = hashPass(newPw);
+    const ok = await storeSet(K.users, State.users);
+    if(!ok){
+      alert(`⚠️ Could not confirm the password reset was saved (${ConnectionState.lastError}). The officer's old password is likely still active. Check your internet connection and try the reset again — do not share the new password until this succeeds.`);
+      render();
+      return;
+    }
+    await logAudit('Password reset', '—', '—', `User ${u.username}`);
+    alert('Password reset confirmed and saved. Share the new temporary password with the user securely.');
+    render();
+  }));
+
+  // settings tabs + form
+  document.querySelectorAll('[data-settings-tab]').forEach(t=>t.addEventListener('click', ()=>{
+    State.activeTab.settings = t.getAttribute('data-settings-tab');
+    render();
+  }));
+  const settingsForm = document.getElementById('settingsForm');
+  if(settingsForm){
+    settingsForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(settingsForm);
+      const before = JSON.parse(JSON.stringify(State.settings));
+
+      // Logo needs special handling — file inputs don't fit the generic
+      // string-based settings loop below, so it's processed first.
+      const logoFileInput = document.getElementById('logoFileInput');
+      const logoFile = logoFileInput && logoFileInput.files[0];
+      if(fd.get('company.removeLogo') === 'on'){
+        State.settings.company.logoDataUrl = null;
+        State.settings.company.logoW = null;
+        State.settings.company.logoH = null;
+      } else if(logoFile){
+        try{
+          const resized = await resizeImageFile(logoFile, 320);
+          State.settings.company.logoDataUrl = resized.dataUrl;
+          State.settings.company.logoW = resized.width;
+          State.settings.company.logoH = resized.height;
+        }catch(err){
+          alert('Could not process that logo image: ' + err.message);
+          return;
+        }
+      }
+
+      for(const [key, val] of fd.entries()){
+        if(key === 'company.logoFile' || key === 'company.removeLogo') continue;
+        if(key === 'departments'){
+          State.settings.departments = val.split('\n').map(x=>x.trim()).filter(Boolean);
+          continue;
+        }
+        setDeep(State.settings, key, val);
+      }
+      // audit-worthy fields
+      if(String(before.pettyCash.approvedFloat) !== String(State.settings.pettyCash.approvedFloat)){
+        await logAudit('Approved float changed', fmtGHS(before.pettyCash.approvedFloat), fmtGHS(State.settings.pettyCash.approvedFloat));
+      }
+      if(String(before.pettyCash.reimbursementThreshold) !== String(State.settings.pettyCash.reimbursementThreshold)){
+        await logAudit('Reimbursement threshold changed', fmtGHS(before.pettyCash.reimbursementThreshold), fmtGHS(State.settings.pettyCash.reimbursementThreshold));
+      }
+      const ok = await storeSet(K.settings, State.settings);
+      if(!ok){
+        State.settings = before; // roll back — nothing was actually saved
+        alert(`⚠️ Could not confirm these settings were saved (${ConnectionState.lastError}). Nothing was changed — check your connection and try again.`);
+        render();
+        return;
+      }
+      await logAudit('Settings updated', '—', State.activeTab.settings + ' tab');
+      alert('Settings confirmed and saved.');
+      render();
+    });
+  }
+
+  // modal close
+  document.querySelectorAll('[data-close-modal]').forEach(el=>el.addEventListener('click', (e)=>{
+    if(e.target.hasAttribute('data-close-modal')){ State.modal = null; render(); }
+  }));
+  document.querySelectorAll('[data-stop]').forEach(el=>el.addEventListener('click', e=>e.stopPropagation()));
+
+  // account form submit
+  const accountForm = document.getElementById('accountForm');
+  if(accountForm){
+    accountForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(accountForm);
+      const code = fd.get('code').trim();
+      const name = fd.get('name').trim();
+      const category = fd.get('category').trim();
+      if(State.modal.mode === 'new'){
+        if(State.accounts.some(a=>a.code===code)){ alert('That account code already exists.'); return; }
+        State.accounts.push({code, name, category, active:true});
+        const ok = await storeSet(K.accounts, State.accounts);
+        if(!ok){
+          State.accounts.pop();
+          alert(`⚠️ Could not confirm this account was saved (${ConnectionState.lastError}). Nothing was created — try again.`);
+          render();
+          return;
+        }
+        await logAudit('Account code created', '—', `${code} — ${name}`);
+      } else {
+        const acc = State.accounts.find(a=>a.code===code);
+        const oldName = acc.name, oldCategory = acc.category;
+        acc.name = name;
+        acc.category = category;
+        const ok = await storeSet(K.accounts, State.accounts);
+        if(!ok){
+          acc.name = oldName; acc.category = oldCategory;
+          alert(`⚠️ Could not confirm these changes were saved (${ConnectionState.lastError}). Nothing was changed — try again.`);
+          render();
+          return;
+        }
+        if(oldName !== name) await logAudit('Account code changed', oldName, name, `Code ${code}`);
+      }
+      State.modal = null;
+      render();
+    });
+  }
+
+  // user form submit
+  const userForm = document.getElementById('userForm');
+  if(userForm){
+    userForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(userForm);
+      const username = fd.get('username').trim();
+      const fullName = fd.get('fullName').trim();
+      const role = fd.get('role');
+      if(State.modal.mode === 'new'){
+        if(State.users.some(u=>u.username.toLowerCase()===username.toLowerCase())){ alert('That username already exists.'); return; }
+        const password = fd.get('password');
+        if(password.length < State.settings.security.minPasswordLength){ alert('Password too short.'); return; }
+        const newUser = {id:uid('USR'), username, passwordHash:hashPass(password), fullName, role, status:'Active', createdAt:nowParts().iso, lastLogin:null};
+        State.users.push(newUser);
+        const ok = await storeSet(K.users, State.users);
+        if(!ok){
+          State.users.pop(); // roll back the local addition, since it never actually saved
+          alert(`⚠️ Could not confirm this user was saved (${ConnectionState.lastError}). Nothing was created — check your connection and try again.`);
+          render();
+          return;
+        }
+        await logAudit('User created', '—', `${username} (${role})`);
+      } else {
+        const u = State.users.find(x=>x.username===username);
+        const oldRole = u.role;
+        const prevFullName = u.fullName, prevRole = u.role;
+        u.fullName = fullName;
+        u.role = role;
+        const ok = await storeSet(K.users, State.users);
+        if(!ok){
+          u.fullName = prevFullName; u.role = prevRole; // roll back
+          alert(`⚠️ Could not confirm these changes were saved (${ConnectionState.lastError}). Nothing was changed — check your connection and try again.`);
+          render();
+          return;
+        }
+        if(oldRole !== role) await logAudit('User role changed', oldRole, role, `User ${username}`);
+        else await logAudit('User details edited', '—', username);
+      }
+      State.modal = null;
+      render();
+    });
+  }
+}
+
+function bindSearch(id, filterKey){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('input', ()=>{
+    State.filters[filterKey] = el.value;
+    render();
+    // refocus + restore cursor after re-render
+    const again = document.getElementById(id);
+    if(again){ again.focus(); again.selectionStart = again.selectionEnd = again.value.length; }
+  });
+}
+
+function setDeep(obj, path, value){
+  const parts = path.split('.');
+  let cur = obj;
+  for(let i=0;i<parts.length-1;i++){ cur = cur[parts[i]]; }
+  const lastKey = parts[parts.length-1];
+  const original = cur[lastKey];
+  if(typeof original === 'number'){ cur[lastKey] = Number(value); }
+  else if(value === 'true' || value === 'false'){ cur[lastKey] = value === 'true'; }
+  else { cur[lastKey] = value; }
+}
+
+async function doLogout(){
+  await logAudit('User logout', '—', State.currentUser.username);
+  State.currentUser = null;
+  State.view = 'login';
+  render();
+}
+
+/* ---------------- utils ---------------- */
+function escapeHtml(str){
+  return String(str ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+function escapeAttr(str){ return escapeHtml(str); }
+
+/* ---------------- boot ---------------- */
+(async function boot(){
+  render();
+  await seedIfNeeded();
+  render();
+})();
+</script>
+</body>
+</html>
