@@ -1504,11 +1504,16 @@ function ledgerRow(t, balance){
     return `
     <tr style="background:var(--green-bg);">
       <td>${t.date}</td>
-      <td colspan="6" style="font-weight:600;color:var(--green);">REIMBURSEMENT RECEIVED ${t.remarks?'— '+escapeHtml(t.remarks):''}</td>
+      <td colspan="4" style="font-weight:600;color:var(--green);">REIMBURSEMENT RECEIVED ${t.remarks?'— '+escapeHtml(t.remarks):''}</td>
+      <td class="mono">${t.batchNumber ? escapeHtml(t.batchNumber) : '<span style="color:var(--text-muted);">—</span>'}</td>
+      <td></td>
       <td></td>
       <td style="text-align:right;font-weight:600;color:var(--green);">${fmtGHS(t.amount)}</td>
       <td style="text-align:right;font-weight:600;">${fmtGHS(balance)}</td>
-      <td class="cell-actions">${can('txn.void') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="void-txn" data-id="${escapeAttr(t.id)}">✕</button>` : ''}</td>
+      <td class="cell-actions">
+        ${State.currentUser.role==='Admin' ? `<button type="button" class="btn btn-ghost btn-sm" data-action="link-reimb-batch" data-id="${escapeAttr(t.id)}" title="Set which batch this reimbursement relates to">🔗</button>` : ''}
+        ${can('txn.void') ? `<button type="button" class="btn btn-ghost btn-sm" data-action="void-txn" data-id="${escapeAttr(t.id)}">✕</button>` : ''}
+      </td>
     </tr>`;
   }
   const editable = txnEditable(t);
@@ -3038,6 +3043,7 @@ function bindShell(){
         id, type:'REIMBURSEMENT', date:fd.get('date'), amount, remarks:fd.get('remarks').trim(),
         status:'POSTED', userId:State.currentUser.id, userName:State.currentUser.fullName,
         dateCreated:date, timeCreated:time, createdAt:iso,
+        batchNumber: (activeBatch() ? activeBatch().batchNumber : ''),
       };
       State.transactions.push(t);
       await storeSet(K.transactions, State.transactions);
@@ -3046,6 +3052,30 @@ function bindShell(){
       render();
     });
   }
+
+  document.querySelectorAll('[data-action="link-reimb-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const t = State.transactions.find(x=>x.id===id);
+    if(!t) return;
+    const openBatchList = State.batches.map(x=>x.batchNumber).join(', ');
+    const val = prompt(`Which batch does this reimbursement relate to? (e.g. HQ_PettyCash_B007)\n\nExisting batches: ${openBatchList || 'none yet'}`, t.batchNumber || '');
+    if(val === null) return;
+    const trimmed = val.trim();
+    if(trimmed && !State.batches.some(x=>x.batchNumber===trimmed)){
+      if(!confirm(`"${trimmed}" doesn't match any existing batch number exactly. Save it anyway?`)) return;
+    }
+    const before = t.batchNumber;
+    t.batchNumber = trimmed;
+    const ok = await storeSet(K.transactions, State.transactions);
+    if(!ok){
+      t.batchNumber = before;
+      alert(`⚠️ Could not confirm this was saved (${ConnectionState.lastError}). Try again.`);
+      render();
+      return;
+    }
+    await logAudit('Reimbursement linked to batch', before||'—', trimmed||'—', id);
+    render();
+  }));
 
   // ---- transaction void (works for both expense and reimbursement rows) ----
   document.querySelectorAll('[data-action="void-txn"]').forEach(b=>b.addEventListener('click', async ()=>{
@@ -3402,6 +3432,7 @@ function bindShell(){
         remarks:`Reimbursement ${r.id} — Ref ${r.paidRef}${r.adjustmentAmount?` (net of ${fmtGHS(r.adjustmentAmount)} adjustment)`:''}`, status:'POSTED',
         userId:State.currentUser.id, userName:State.currentUser.fullName,
         dateCreated:date, timeCreated:time, createdAt:iso, reimbursementRequestId:r.id,
+        batchNumber: (activeBatch() ? activeBatch().batchNumber : ''),
       };
       State.transactions.push(creditTxn);
       await storeSet(K.reimbursements, State.reimbursements);
