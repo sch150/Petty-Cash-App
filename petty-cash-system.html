@@ -1784,8 +1784,19 @@ function renderCashCount(){
 }
 
 /* ---------------- REIMBURSEMENT ---------------- */
-function eligibleForReimbursement(){
-  return State.transactions.filter(t => t.type==='EXPENSE' && t.status!=='VOIDED' && !t.reimbursementId);
+function eligibleForReimbursement(batchNumber){
+  const base = State.transactions.filter(t => t.type==='EXPENSE' && t.status!=='VOIDED' && !t.reimbursementId);
+  return batchNumber ? base.filter(t=>t.batchNumber===batchNumber) : base;
+}
+function eligibleBatchesForReimbursement(){
+  const map = {};
+  eligibleForReimbursement().forEach(t=>{
+    const bn = t.batchNumber || '(no batch)';
+    if(!map[bn]) map[bn] = {batchNumber:bn, count:0, total:0};
+    map[bn].count++;
+    map[bn].total += Number(t.amount||0);
+  });
+  return Object.values(map).sort((a,b)=> a.batchNumber.localeCompare(b.batchNumber));
 }
 /* The actual amount to be paid out — normally equal to Amount Spent, but can
    be netted down (or up) by a one-time adjustment, e.g. resetting the float
@@ -2558,7 +2569,35 @@ function renderModal(){
   if(m.type === 'import-accounts') return renderImportAccountsModal();
   if(m.type === 'upload-txn') return renderUploadTxnModal();
   if(m.type === 'register-batch') return renderRegisterBatchModal();
+  if(m.type === 'select-reimb-batch') return renderSelectReimbBatchModal();
   return '';
+}
+function renderSelectReimbBatchModal(){
+  const batches = eligibleBatchesForReimbursement();
+  return `
+  <div class="modal-overlay" data-close-modal>
+    <div class="modal" data-stop>
+      <div class="modal-head">
+        <h3>Select Batch to Request Reimbursement For</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="note-box" style="margin-bottom:14px;">Each request covers exactly one batch, so old and new expenses never get mixed together.</div>
+        ${batches.length===0 ? `<p style="color:var(--text-muted);">No unreimbursed transactions found.</p>` :
+          batches.map(b=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line-soft);">
+            <div>
+              <div class="mono" style="font-weight:600;">${escapeHtml(b.batchNumber)}</div>
+              <div style="font-size:12.5px;color:var(--text-muted);">${b.count} transaction(s) — ${fmtGHS(b.total)}</div>
+            </div>
+            <button type="button" class="btn btn-gold btn-sm" data-action="pick-reimb-batch" data-batch="${escapeAttr(b.batchNumber)}">Select</button>
+          </div>`).join('')}
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+      </div>
+    </div>
+  </div>`;
 }
 function renderRegisterBatchModal(){
   const today = new Date().toISOString().slice(0,10);
@@ -3200,24 +3239,31 @@ function bindShell(){
   }
 
   // ---- reimbursement lifecycle ----
-  document.querySelectorAll('[data-action="create-reimbursement"]').forEach(b=>b.addEventListener('click', async ()=>{
-    const eligible = eligibleForReimbursement();
-    if(eligible.length===0){ alert('No unreimbursed transactions available.'); return; }
+  document.querySelectorAll('[data-action="create-reimbursement"]').forEach(b=>b.addEventListener('click', ()=>{
+    if(eligibleForReimbursement().length===0){ alert('No unreimbursed transactions available.'); return; }
+    State.modal = {type:'select-reimb-batch'};
+    render();
+  }));
+  document.querySelectorAll('[data-action="pick-reimb-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const bn = b.getAttribute('data-batch');
+    const eligible = eligibleForReimbursement(bn);
+    if(eligible.length===0){ alert('No unreimbursed transactions in that batch.'); return; }
     const dates = eligible.map(t=>t.date).sort();
     const id = await nextNumber('reimb');
     const {date, iso} = nowParts();
     const totalAmount = eligible.reduce((s,t)=>s+Number(t.amount||0),0);
     const r = {
       id, status:'DRAFT', requestDate:date, requestedBy:State.currentUser.fullName, requestedById:State.currentUser.id,
-      periodFrom:dates[0], periodTo:dates[dates.length-1], totalAmount, reviewedBy:'', remarks:'', createdAt:iso,
-      adjustmentAmount:0, adjustmentReason:'',
+      periodFrom:dates[0], periodTo:dates[dates.length-1], totalAmount, reviewedBy:'', remarks:`Batch ${bn}`, createdAt:iso,
+      adjustmentAmount:0, adjustmentReason:'', sourceBatch:bn,
     };
     eligible.forEach(t=>{ t.reimbursementId = id; });
     State.reimbursements.push(r);
     await storeSet(K.reimbursements, State.reimbursements);
     await storeSet(K.transactions, State.transactions);
-    await logAudit('Reimbursement request created', '—', `${id} — ${fmtGHS(totalAmount)}`);
+    await logAudit('Reimbursement request created', '—', `${id} — ${fmtGHS(totalAmount)} — Batch ${bn}`);
     State.activeReimbursementId = id;
+    State.modal = null;
     State.view = 'reimbursement';
     render();
   }));
