@@ -1635,7 +1635,7 @@ function ledgerRow(t, balance, isDuplicate){
   if(t.type==='BALANCE_RESET'){
     return `
     <tr style="background:#e6ecf5;">
-      <td>${t.date}</td>
+      <td>${t.date} ${State.currentUser.role==='Admin' ? `<button type="button" class="btn btn-ghost btn-sm" data-action="edit-txn-date" data-id="${escapeAttr(t.id)}" title="Change date" style="padding:2px 6px;">📅</button>` : ''}</td>
       <td colspan="4" style="font-weight:600;color:#2d4a7a;">CASH ON HAND SET (MANUAL) ${t.remarks?'— '+escapeHtml(t.remarks):''}</td>
       <td class="mono">${t.batchNumber ? escapeHtml(t.batchNumber) : '<span style="color:var(--text-muted);">—</span>'}</td>
       <td></td>
@@ -1649,7 +1649,7 @@ function ledgerRow(t, balance, isDuplicate){
     const isCorrection = !!t.isCorrection;
     return `
     <tr style="background:${isCorrection?'var(--gold-bg)':'var(--green-bg)'};">
-      <td>${t.date}</td>
+      <td>${t.date} ${State.currentUser.role==='Admin' ? `<button type="button" class="btn btn-ghost btn-sm" data-action="edit-txn-date" data-id="${escapeAttr(t.id)}" title="Change date" style="padding:2px 6px;">📅</button>` : ''}</td>
       <td colspan="4" style="font-weight:600;color:${isCorrection?'#5c4413':'var(--green)'};">${isCorrection?'CASH CORRECTION':'REIMBURSEMENT RECEIVED'} ${t.remarks?'— '+escapeHtml(t.remarks):''}</td>
       <td class="mono">${t.batchNumber ? escapeHtml(t.batchNumber) : '<span style="color:var(--text-muted);">—</span>'}</td>
       <td></td>
@@ -3514,6 +3514,27 @@ function bindShell(){
       render();
     });
   }
+
+  document.querySelectorAll('[data-action="edit-txn-date"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.getAttribute('data-id');
+    const t = State.transactions.find(x=>x.id===id);
+    if(!t) return;
+    const val = prompt(`New date for this entry (YYYY-MM-DD):`, t.date);
+    if(val === null) return;
+    const trimmed = val.trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)){ alert('Please use the format YYYY-MM-DD, e.g. 2026-09-25.'); return; }
+    const before = t.date;
+    t.date = trimmed;
+    const ok = await storeSet(K.transactions, State.transactions);
+    if(!ok){
+      t.date = before;
+      alert(`⚠️ Could not confirm this was saved (${ConnectionState.lastError}). Try again.`);
+      render();
+      return;
+    }
+    await logAudit('Entry date changed', before, trimmed, id);
+    render();
+  }));
 
   document.querySelectorAll('[data-action="link-reimb-batch"]').forEach(b=>b.addEventListener('click', async ()=>{
     const id = b.getAttribute('data-id');
