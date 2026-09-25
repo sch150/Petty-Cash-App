@@ -478,51 +478,36 @@ function jsonpRequest(params){
     document.head.appendChild(script);
   });
 }
-async function storeGet(key, fallback){
-  try{
-    const r = await jsonpRequest({ action:'get', key });
-    if(r.error) throw new Error(r.error);
-    ConnectionState.ok = true;
-    return (r.value===null || r.value===undefined || r.value==='') ? fallback : JSON.parse(r.value);
-  }catch(e){
-    ConnectionState.ok = false; ConnectionState.lastError = String(e);
-    console.error('storage get failed', key, e);
-    return fallback;
-  }
+/* Google Sheets caps a single cell at ~50,000 characters. As real data grows
+   (transactions especially), a single JSON blob can exceed that silently —
+   the write gets truncated and can never verify correctly again. These "raw"
+   primitives read/write exactly one row; the public storeGet/storeSet wrap
+   them with transparent chunking for anything too large to fit in one cell. */
+const MAX_CHUNK_CHARS = 35000; // safety margin well under the ~50k limit
+
+async function rawGet(key){
+  const r = await jsonpRequest({ action:'get', key });
+  if(r.error) throw new Error(r.error);
+  return (r.value===null || r.value===undefined || r.value==='') ? null : r.value;
 }
-/* Writes use fetch in "no-cors" mode: the request is genuinely sent and
-   processed by Apps Script (confirmed working), we just can't read the
-   response back — which is fine, since we don't need to for a save. */
-async function storeSet(key, value, _isRetry){
-  const serialized = JSON.stringify(value);
+async function rawSet(key, stringValue, _isRetry){
   try{
     await fetch(BACKEND.url, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action:'set', key, value: serialized, token: BACKEND.token }),
+      body: JSON.stringify({ action:'set', key, value: stringValue, token: BACKEND.token }),
     });
   }catch(e){
     ConnectionState.ok = false; ConnectionState.lastError = 'Could not reach backend: ' + String(e);
     console.error('storage set failed (network)', key, e);
     return false;
   }
-  // no-cors writes always "succeed" from the browser's point of view even if
-  // Google never received them — so read the value straight back to confirm
-  // it actually landed, instead of assuming success.
   try{
-    // Small pause before verifying — some of the "mismatch" failures are just
-    // the read happening before the write has fully propagated, not a real
-    // failure. Only applied on the first attempt, not the retry.
     if(!_isRetry) await new Promise(res=>setTimeout(res, 400));
-    const r = await jsonpRequest({ action:'get', key });
-    if(r.error) throw new Error(r.error);
-    if(r.value !== serialized){
-      if(!_isRetry){
-        // One automatic retry: re-send the write and re-verify before
-        // reporting a failure to the person.
-        return await storeSet(key, value, true);
-      }
+    const got = await rawGet(key);
+    if(got !== stringValue){
+      if(!_isRetry) return await rawSet(key, stringValue, true);
       ConnectionState.ok = false;
       ConnectionState.lastError = 'Save could not be verified — the value in the Sheet does not match what was sent.';
       console.error('storage set unverified', key);
@@ -534,6 +519,68 @@ async function storeSet(key, value, _isRetry){
     ConnectionState.ok = false; ConnectionState.lastError = 'Could not verify save: ' + String(e);
     console.error('storage set verification failed', key, e);
     return false;
+  }
+}
+
+async function storeGet(key, fallback){
+  try{
+    const raw = await rawGet(key);
+    ConnectionState.ok = true;
+    if(raw === null) return fallback;
+    let parsed;
+    try{ parsed = JSON.parse(raw); }catch(e){ return fallback; }
+    if(parsed && typeof parsed==='object' && parsed.__chunked){
+      let full = '';
+      for(let i=0;i<parsed.count;i++){
+        const chunk = await rawGet(`${key}__chunk${i}`);
+        if(chunk === null) throw new Error(`missing chunk ${i} of ${parsed.count} for ${key}`);
+        full += chunk;
+      }
+      return JSON.parse(full);
+    }
+    return parsed;
+  }catch(e){
+    ConnectionState.ok = false; ConnectionState.lastError = String(e);
+    console.error('storage get failed', key, e);
+    return fallback;
+  }
+}
+/* Writes use fetch in "no-cors" mode: the request is genuinely sent and
+   processed by Apps Script (confirmed working), we just can't read the
+   response back — which is fine, since we don't need to for a save. */
+async function storeSet(key, value){
+  const serialized = JSON.stringify(value);
+  if(serialized.length <= MAX_CHUNK_CHARS){
+    // Small enough for one cell. If this key was previously chunked (value
+    // used to be large, now isn't — e.g. after voiding old records), clean
+    // up any leftover chunk rows so storeGet never mistakes stale chunks for
+    // current data.
+    const ok = await rawSet(key, serialized);
+    if(ok) await cleanupOldChunks(key);
+    return ok;
+  }
+  const chunks = [];
+  for(let i=0;i<serialized.length;i+=MAX_CHUNK_CHARS){ chunks.push(serialized.slice(i, i+MAX_CHUNK_CHARS)); }
+  const manifestOk = await rawSet(key, JSON.stringify({ __chunked:true, count:chunks.length }));
+  if(!manifestOk) return false;
+  for(let i=0;i<chunks.length;i++){
+    const ok = await rawSet(`${key}__chunk${i}`, chunks[i]);
+    if(!ok) return false;
+  }
+  await cleanupOldChunks(key, chunks.length);
+  return true;
+}
+/* If a key shrinks (fewer chunks than before, or no longer chunked at all),
+   remove now-unused chunk rows so a future read never reassembles stale,
+   orphaned chunk data by mistake. */
+async function cleanupOldChunks(key, fromIndex){
+  fromIndex = fromIndex || 0;
+  for(let i=fromIndex; i<fromIndex+5; i++){
+    try{
+      const still = await rawGet(`${key}__chunk${i}`);
+      if(still === null) break; // no more leftover chunks beyond this point
+      await rawSet(`${key}__chunk${i}`, '');
+    }catch(e){ break; }
   }
 }
 
@@ -581,11 +628,21 @@ async function logAudit(action, oldValue, newValue, reason){
    temporary connection problem, so we never confuse the two. */
 async function storeGetRaw(key){
   try{
-    const r = await jsonpRequest({ action:'get', key });
-    if(r.error) throw new Error(r.error);
+    const raw = await rawGet(key);
     ConnectionState.ok = true;
-    const value = (r.value===null || r.value===undefined || r.value==='') ? null : JSON.parse(r.value);
-    return { ok:true, value };
+    if(raw === null) return { ok:true, value:null };
+    let parsed;
+    try{ parsed = JSON.parse(raw); }catch(e){ return { ok:true, value:null }; }
+    if(parsed && typeof parsed==='object' && parsed.__chunked){
+      let full = '';
+      for(let i=0;i<parsed.count;i++){
+        const chunk = await rawGet(`${key}__chunk${i}`);
+        if(chunk === null) throw new Error(`missing chunk ${i} of ${parsed.count} for ${key}`);
+        full += chunk;
+      }
+      return { ok:true, value: JSON.parse(full) };
+    }
+    return { ok:true, value: parsed };
   }catch(e){
     ConnectionState.ok = false; ConnectionState.lastError = String(e);
     console.error('storage get failed', key, e);
@@ -857,6 +914,7 @@ function can(perm){
     'reimbursement.record': ['Admin','Petty Cashier'],
     'cash.correction': ['Admin','Reviewer/Approver'],
     'cash.balancereset': ['Admin'],
+    'backup.restore': ['Admin'],
     'batch.register-custom': ['Admin'],
     'cashcount.create': ['Admin','Petty Cashier'],
     'reimb.create': ['Admin','Petty Cashier'],
@@ -1058,6 +1116,7 @@ const NAV = [
     {id:'users', label:'Users', phase:1, perm:'users.manage'},
     {id:'settings', label:'Admin Settings', phase:1, perm:'settings.edit'},
     {id:'audit', label:'Audit Log', phase:1, perm:'audit.view'},
+    {id:'backup', label:'Backup & Restore', phase:1},
   ]},
 ];
 
@@ -1123,6 +1182,7 @@ function pageTitle(view){
     createbatch:'Create Batch', viewbatches:'Batch Management',
     postingsummary:'Posting Summary',
     cashcount:'Cash Count', reimbursement:'Reimbursement', reconciliation:'Reconciliation',
+    backup:'Backup & Restore',
     reports:'Reports',
   };
   return map[view] || 'Dashboard';
@@ -1143,6 +1203,7 @@ function renderView(view){
     case 'reimbursement': return renderReimbursement();
     case 'reconciliation': return renderReconciliation();
     case 'reports': return renderReports();
+    case 'backup': return renderBackup();
     default: return renderDashboard();
   }
 }
@@ -1406,6 +1467,47 @@ function renderSettings(){
 }
 
 /* ---------------- AUDIT LOG ---------------- */
+/* ---------------- BACKUP & RESTORE ---------------- */
+function renderBackup(){
+  const counts = {
+    Users: State.users.length, 'Account codes': State.accounts.length,
+    Transactions: State.transactions.length, Batches: State.batches.length,
+    'Cash counts': State.cashCounts.length, 'Reimbursement requests': State.reimbursements.length,
+    'Audit log entries': State.auditLog.length,
+  };
+  return `
+  <div class="page-head">
+    <h1>Backup &amp; Restore</h1>
+    <p><b>Interim safety net</b> while we work on a more robust backend. Take a local backup regularly — if the online storage ever has an issue, you can restore straight from this file rather than losing anything.</p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Download a Backup</h2></div>
+    <div class="panel-body">
+      <table style="margin-bottom:16px;">
+        <tbody>
+          ${Object.entries(counts).map(([label,n])=>`<tr><td style="padding:6px 0;color:var(--text-muted);">${label}</td><td style="padding:6px 0;text-align:right;font-weight:600;">${n}</td></tr>`).join('')}
+        </tbody>
+      </table>
+      <button type="button" class="btn btn-gold" data-action="download-backup">⬇ Download Backup File</button>
+      <div class="hint" style="margin-top:8px;">Saves everything above into one .json file to your PC. Do this before making risky changes, and periodically in general — email it to yourself or save it somewhere safe.</div>
+    </div>
+  </div>
+
+  ${can('backup.restore') ? `
+  <div class="panel">
+    <div class="panel-head"><h2>Restore from a Backup</h2></div>
+    <div class="panel-body">
+      <div class="banner banner-info" style="margin-bottom:14px;">This pushes the backup file's data back to the shared Google Sheet, replacing what's there now for <b>everyone</b> — not just your own browser. Use this only to recover from a real problem, not casually. Make a fresh backup first if you're at all unsure.</div>
+      <div class="field"><label>Backup file (.json)</label><input type="file" id="restoreFileInput" accept=".json"></div>
+      <button type="button" class="btn btn-danger" data-action="do-restore-backup" style="margin-top:10px;">Restore This Backup</button>
+    </div>
+  </div>` : `
+  <div class="note-box">Only an Admin can restore a backup, since it overwrites the shared data for everyone.</div>
+  `}
+  `;
+}
+
 function renderAudit(){
   const q = State.filters.audit.toLowerCase();
   const rows = State.auditLog.filter(a =>
@@ -3894,6 +3996,72 @@ function bindShell(){
           ...txns.map(t=>[t.id,t.date,t.recipient,t.description,t.department||'',t.accountCode,t.accountName,t.batchNumber||'',t.voucher||'',Number(t.amount||0).toFixed(2),t.status,t.userName]),
         ]);
       }
+    });
+  }
+
+  // ---- backup & restore (interim local safety net) ----
+  const downloadBackupBtn = document.querySelector('[data-action="download-backup"]');
+  if(downloadBackupBtn){
+    downloadBackupBtn.addEventListener('click', async ()=>{
+      const backup = {
+        exportedAt: nowParts().iso,
+        exportedBy: State.currentUser.username,
+        app: 'Petty Cash System (Google Sheets backend)',
+        data: {
+          [K.users]: State.users, [K.accounts]: State.accounts, [K.settings]: State.settings,
+          [K.audit]: State.auditLog, [K.transactions]: State.transactions, [K.batches]: State.batches,
+          [K.cashCounts]: State.cashCounts, [K.reimbursements]: State.reimbursements,
+        },
+      };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `petty-cash-backup-${new Date().toISOString().slice(0,10)}-${new Date().toTimeString().slice(0,5).replace(':','')}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      await logAudit('Backup downloaded', '—', a.download);
+    });
+  }
+  const doRestoreBtn = document.querySelector('[data-action="do-restore-backup"]');
+  if(doRestoreBtn){
+    doRestoreBtn.addEventListener('click', async ()=>{
+      const fileInput = document.getElementById('restoreFileInput');
+      const file = fileInput && fileInput.files[0];
+      if(!file){ alert('Choose a backup .json file first.'); return; }
+      let backup;
+      try{
+        const text = await file.text();
+        backup = JSON.parse(text);
+        if(!backup.data || !backup.data[K.users]) throw new Error('Not a recognizable backup file.');
+      }catch(err){
+        alert('Could not read that file — make sure it\'s a backup .json downloaded from this app.');
+        return;
+      }
+      const confirmText = prompt(`This will REPLACE the SHARED data for EVERYONE (exported ${backup.exportedAt ? new Date(backup.exportedAt).toLocaleString() : 'unknown date'}, by ${backup.exportedBy||'unknown'}).\n\nType RESTORE to confirm:`);
+      if(confirmText !== 'RESTORE'){ return; }
+
+      State.users = backup.data[K.users] || [];
+      State.accounts = backup.data[K.accounts] || [];
+      State.settings = backup.data[K.settings] || State.settings;
+      State.auditLog = backup.data[K.audit] || [];
+      State.transactions = backup.data[K.transactions] || [];
+      State.batches = backup.data[K.batches] || [];
+      State.cashCounts = backup.data[K.cashCounts] || [];
+      State.reimbursements = backup.data[K.reimbursements] || [];
+
+      const results = await Promise.all([
+        storeSet(K.users, State.users), storeSet(K.accounts, State.accounts), storeSet(K.settings, State.settings),
+        storeSet(K.audit, State.auditLog), storeSet(K.transactions, State.transactions), storeSet(K.batches, State.batches),
+        storeSet(K.cashCounts, State.cashCounts), storeSet(K.reimbursements, State.reimbursements),
+      ]);
+      if(results.some(ok=>!ok)){
+        alert(`⚠️ Some parts of the restore could not be confirmed as saved to the Sheet (${ConnectionState.lastError}). Please check your data carefully — you may need to try restoring again.`);
+        render();
+        return;
+      }
+      await logAudit('Backup restored', '—', `From file exported ${backup.exportedAt||'unknown'} by ${backup.exportedBy||'unknown'}`);
+      alert('Backup restored to the shared Sheet. The page will now reload.');
+      window.location.reload();
     });
   }
 
