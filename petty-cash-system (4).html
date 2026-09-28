@@ -991,6 +991,53 @@ function bindNeedsInit(){
   });
 }
 
+/* Pulls every complete {...} entry out of a JSON array's text, even if the text
+   is cut off or damaged further along. Used only to rescue the audit history. */
+function salvageArrayObjects(text){
+  const out = [];
+  let i = String(text||'').indexOf('[');
+  if(i < 0) return out;
+  i++;
+  let depth = 0, inStr = false, esc = false, start = -1;
+  for(; i < text.length; i++){
+    const c = text[i];
+    if(inStr){ if(esc) esc = false; else if(c === '\\') esc = true; else if(c === '"') inStr = false; continue; }
+    if(c === '"'){ inStr = true; continue; }
+    if(c === '{'){ if(depth === 0) start = i; depth++; }
+    else if(c === '}'){
+      depth--;
+      if(depth === 0 && start >= 0){
+        try{ out.push(JSON.parse(text.slice(start, i+1))); }catch(e){}
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+async function repairAuditLog(backupAudit){
+  // read whatever text is readable (first stored piece, or the whole value if not split)
+  let text = '';
+  try{
+    const raw = await rawGet(K.audit);
+    if(raw !== null){
+      let parsed = null;
+      try{ parsed = JSON.parse(raw); }catch(e){ parsed = null; }
+      if(parsed && parsed.__chunked){ text = (await rawGet(`${K.audit}__chunk0`)) || ''; }
+      else text = raw;
+    }
+  }catch(e){ /* nothing readable */ }
+  const salvaged = salvageArrayObjects(text).filter(x=>x && x.id && x.action);
+  const seen = new Set(salvaged.map(x=>x.id));
+  const older = (Array.isArray(backupAudit) ? backupAudit : []).filter(x=>x && x.id && !seen.has(x.id));
+  const {date, time, iso} = nowParts();
+  const note = { id:uid('AUD'), action:'Audit log repaired', oldValue:'—',
+    newValue:`${salvaged.length} recovered from the damaged log${older.length?`, ${older.length} older entries added from a backup file`:''}`,
+    user:'system', date, time, iso, reason:'Damaged audit history was rebuilt. No other data was changed.' };
+  const merged = [note, ...salvaged, ...older];
+  const ok = await storeSet(K.audit, merged);
+  return { ok, salvaged:salvaged.length, older:older.length };
+}
+
 function renderLoadError(){
   const fails = State.loadFailures || [];
   return `
@@ -1001,6 +1048,13 @@ function renderLoadError(){
       <p class="login-sub">The app could not fully confirm what's stored in your Google Sheet, so it has stopped rather than risk saving over your records. Nothing has been changed.</p>
       ${fails.length ? `<div class="note-box" style="margin-bottom:14px;"><b>What it found:</b>
         <ul style="margin:8px 0 0;padding-left:18px;">${fails.map(f=>`<li><span class="mono">${escapeHtml(f.key||'')}</span> — ${escapeHtml(f.error||'')}</li>`).join('')}</ul></div>` : `<div class="note-box" style="margin-bottom:14px;">Last error: <span class="mono">${escapeHtml(ConnectionState.lastError || 'unknown')}</span></div>`}
+      ${(fails.length>0 && fails.every(f=>f.key===K.audit)) ? `
+      <div class="banner banner-green" style="margin-bottom:14px;">
+        <b>Good news: only your audit history is damaged.</b> Your transactions, batches, users, cash counts and balances are untouched. You can rebuild the audit history on its own without restoring anything else.
+        <div class="field" style="margin-top:10px;"><label>Optional: a backup file, to also bring back older audit entries</label><input type="file" id="auditRepairFile" accept=".json"></div>
+        <button type="button" class="btn btn-gold btn-block" data-action="repair-audit">Repair Audit Log Only</button>
+        <div id="auditRepairStatus" style="margin-top:8px;font-size:13px;"></div>
+      </div>` : ''}
       <button class="btn btn-gold btn-block" data-action="retry-load">Try Again</button>
       <details style="margin-top:18px;">
         <summary style="cursor:pointer;font-weight:600;font-size:13.5px;">If "Try Again" keeps failing: recover from a backup file</summary>
@@ -1019,6 +1073,24 @@ function bindLoadError(){
   if(retry) retry.addEventListener('click', async ()=>{
     State.loaded = false;
     render();
+    await seedIfNeeded();
+    render();
+  });
+  const repairBtn = document.querySelector('[data-action="repair-audit"]');
+  if(repairBtn) repairBtn.addEventListener('click', async ()=>{
+    const status = document.getElementById('auditRepairStatus');
+    let backupAudit = [];
+    const f = document.getElementById('auditRepairFile').files[0];
+    if(f){
+      try{ const b = JSON.parse(await f.text()); backupAudit = (b.data && b.data[K.audit]) || []; }
+      catch(e){ alert('Could not read that backup file. Choose a backup .json from this app, or leave it empty to repair without one.'); return; }
+    }
+    if(!confirm('Rebuild the audit history now? Only the audit log is changed. Entries that cannot be read from the damaged copy will be missing unless you supplied a backup file.')) return;
+    repairBtn.disabled = true; status.textContent = 'Repairing…';
+    const res = await repairAuditLog(backupAudit);
+    if(!res.ok){ repairBtn.disabled = false; status.textContent = ''; alert('The repair could not be confirmed as saved (' + ConnectionState.lastError + '). Nothing else was changed. Please try again.'); return; }
+    alert(`Audit log repaired: ${res.salvaged} entries recovered${res.older?`, ${res.older} older entries added from your backup`:''}. Loading the app now.`);
+    State.loaded = false; render();
     await seedIfNeeded();
     render();
   });
