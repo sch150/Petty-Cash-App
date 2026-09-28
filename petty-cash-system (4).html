@@ -478,13 +478,11 @@ function jsonpRequest(params){
     document.head.appendChild(script);
   });
 }
-/* Google Sheets caps a single cell at ~50,000 characters. As real data grows
-   (transactions especially), a single JSON blob can exceed that silently —
-   the write gets truncated and can never verify correctly again. These "raw"
-   primitives read/write exactly one row; the public storeGet/storeSet wrap
-   them with transparent chunking for anything too large to fit in one cell. */
-const MAX_CHUNK_CHARS = 35000; // safety margin well under the ~50k limit
-
+/* Storage model: every table is saved as ONE value in a single request. The
+   backend (v2) splits big values across rows itself, inside one locked step, so
+   a save is either fully applied or not applied — no more half-written data.
+   Older versions of this app split big tables into "__chunk" rows themselves;
+   those are still READ correctly (and cleaned up on the next save). */
 async function rawGet(key){
   const r = await jsonpRequest({ action:'get', key });
   if(r.error) throw new Error(r.error);
@@ -521,67 +519,66 @@ async function rawSet(key, stringValue, _isRetry){
     return false;
   }
 }
+async function rawDelete(key){
+  try{
+    await fetch(BACKEND.url, {
+      method:'POST', mode:'no-cors',
+      headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action:'delete', key, token: BACKEND.token }),
+    });
+  }catch(e){ console.error('storage delete failed', key, e); }
+}
+
+/* Keys that were found stored in the old app-side "__chunk" format */
+const LEGACY_CHUNKED = new Set();
+
+/* Reads one table. Returns the parsed value, or null if it doesn't exist.
+   THROWS (with a clear message naming the table) if the stored data can't be
+   read — it never quietly returns "empty" for damaged data. */
+async function readValue(key){
+  const raw = await rawGet(key);
+  if(raw === null) return null;
+  let parsed;
+  try{ parsed = JSON.parse(raw); }
+  catch(e){ throw new Error(`Stored data for "${key}" is damaged (${e.message})`); }
+  if(parsed && typeof parsed==='object' && parsed.__chunked){
+    LEGACY_CHUNKED.add(key);
+    let full = '';
+    for(let i=0;i<parsed.count;i++){
+      const chunk = await rawGet(`${key}__chunk${i}`);
+      if(chunk === null) throw new Error(`Stored data for "${key}" is incomplete (piece ${i+1} of ${parsed.count} missing)`);
+      full += chunk;
+    }
+    try{ return JSON.parse(full); }
+    catch(e){ throw new Error(`Stored data for "${key}" is damaged — its saved pieces don't fit together (${e.message})`); }
+  }
+  return parsed;
+}
 
 async function storeGet(key, fallback){
   try{
-    const raw = await rawGet(key);
+    const v = await readValue(key);
     ConnectionState.ok = true;
-    if(raw === null) return fallback;
-    let parsed;
-    try{ parsed = JSON.parse(raw); }catch(e){ return fallback; }
-    if(parsed && typeof parsed==='object' && parsed.__chunked){
-      let full = '';
-      for(let i=0;i<parsed.count;i++){
-        const chunk = await rawGet(`${key}__chunk${i}`);
-        if(chunk === null) throw new Error(`missing chunk ${i} of ${parsed.count} for ${key}`);
-        full += chunk;
-      }
-      return JSON.parse(full);
-    }
-    return parsed;
+    return v === null ? fallback : v;
   }catch(e){
-    ConnectionState.ok = false; ConnectionState.lastError = String(e);
+    ConnectionState.ok = false; ConnectionState.lastError = String(e.message||e);
     console.error('storage get failed', key, e);
     return fallback;
   }
 }
-/* Writes use fetch in "no-cors" mode: the request is genuinely sent and
-   processed by Apps Script (confirmed working), we just can't read the
-   response back — which is fine, since we don't need to for a save. */
 async function storeSet(key, value){
-  const serialized = JSON.stringify(value);
-  if(serialized.length <= MAX_CHUNK_CHARS){
-    // Small enough for one cell. If this key was previously chunked (value
-    // used to be large, now isn't — e.g. after voiding old records), clean
-    // up any leftover chunk rows so storeGet never mistakes stale chunks for
-    // current data.
-    const ok = await rawSet(key, serialized);
-    if(ok) await cleanupOldChunks(key);
-    return ok;
+  const ok = await rawSet(key, JSON.stringify(value));
+  if(ok && LEGACY_CHUNKED.has(key)){
+    // this table used to be stored in old-style pieces — remove them now that it's saved properly
+    for(let i=0;i<200;i++){
+      let still = null;
+      try{ still = await rawGet(`${key}__chunk${i}`); }catch(e){ break; }
+      if(still === null) break;
+      await rawDelete(`${key}__chunk${i}`);
+    }
+    LEGACY_CHUNKED.delete(key);
   }
-  const chunks = [];
-  for(let i=0;i<serialized.length;i+=MAX_CHUNK_CHARS){ chunks.push(serialized.slice(i, i+MAX_CHUNK_CHARS)); }
-  const manifestOk = await rawSet(key, JSON.stringify({ __chunked:true, count:chunks.length }));
-  if(!manifestOk) return false;
-  for(let i=0;i<chunks.length;i++){
-    const ok = await rawSet(`${key}__chunk${i}`, chunks[i]);
-    if(!ok) return false;
-  }
-  await cleanupOldChunks(key, chunks.length);
-  return true;
-}
-/* If a key shrinks (fewer chunks than before, or no longer chunked at all),
-   remove now-unused chunk rows so a future read never reassembles stale,
-   orphaned chunk data by mistake. */
-async function cleanupOldChunks(key, fromIndex){
-  fromIndex = fromIndex || 0;
-  for(let i=fromIndex; i<fromIndex+5; i++){
-    try{
-      const still = await rawGet(`${key}__chunk${i}`);
-      if(still === null) break; // no more leftover chunks beyond this point
-      await rawSet(`${key}__chunk${i}`, '');
-    }catch(e){ break; }
-  }
+  return ok;
 }
 
 function uid(prefix){ return prefix + '-' + Math.random().toString(36).slice(2,9); }
@@ -628,25 +625,13 @@ async function logAudit(action, oldValue, newValue, reason){
    temporary connection problem, so we never confuse the two. */
 async function storeGetRaw(key){
   try{
-    const raw = await rawGet(key);
+    const value = await readValue(key);
     ConnectionState.ok = true;
-    if(raw === null) return { ok:true, value:null };
-    let parsed;
-    try{ parsed = JSON.parse(raw); }catch(e){ return { ok:true, value:null }; }
-    if(parsed && typeof parsed==='object' && parsed.__chunked){
-      let full = '';
-      for(let i=0;i<parsed.count;i++){
-        const chunk = await rawGet(`${key}__chunk${i}`);
-        if(chunk === null) throw new Error(`missing chunk ${i} of ${parsed.count} for ${key}`);
-        full += chunk;
-      }
-      return { ok:true, value: JSON.parse(full) };
-    }
-    return { ok:true, value: parsed };
+    return { ok:true, value };
   }catch(e){
-    ConnectionState.ok = false; ConnectionState.lastError = String(e);
+    ConnectionState.ok = false; ConnectionState.lastError = String(e.message||e);
     console.error('storage get failed', key, e);
-    return { ok:false, value:null };
+    return { ok:false, value:null, key, error:String(e.message||e) };
   }
 }
 
@@ -681,7 +666,8 @@ async function seedIfNeeded(){
     storeGetRaw(K.transactions), storeGetRaw(K.batches), storeGetRaw(K.cashCounts), storeGetRaw(K.reimbursements),
   ]);
 
-  if([users, accounts, settings, audit, transactions, batches, cashCounts, reimbursements].some(r=>!r.ok)){
+  State.loadFailures = [users, accounts, settings, audit, transactions, batches, cashCounts, reimbursements].filter(r=>!r.ok).map(r=>({key:r.key, error:r.error}));
+  if(State.loadFailures.length){
     // Could not confirm what's actually in the backend — never guess or write
     // in this state, since that's exactly how real data gets silently
     // overwritten by blank defaults. Block and let the person retry.
@@ -1006,16 +992,25 @@ function bindNeedsInit(){
 }
 
 function renderLoadError(){
+  const fails = State.loadFailures || [];
   return `
   <div class="login-wrap">
-    <div class="login-card" style="max-width:480px;">
+    <div class="login-card" style="max-width:520px;">
       <div class="login-mark">CANNOT SAFELY LOAD DATA</div>
       <h1 class="login-title">Something's not right</h1>
-      <p class="login-sub">The app could not fully confirm what's in your Google Sheet — either a request failed, or some core data is missing while other data exists (which should never happen on a real, working system).</p>
-      <div class="note-box" style="margin-bottom:18px;">
-        To protect your data, the app will not guess, fill in blanks, or write anything in this state. Common causes: a temporary connection drop, or the app pointing at the wrong Apps Script deployment (see: multiple deployments under "Manage deployments"). Last error: <span class="mono">${escapeHtml(ConnectionState.lastError || 'unknown')}</span>
-      </div>
+      <p class="login-sub">The app could not fully confirm what's stored in your Google Sheet, so it has stopped rather than risk saving over your records. Nothing has been changed.</p>
+      ${fails.length ? `<div class="note-box" style="margin-bottom:14px;"><b>What it found:</b>
+        <ul style="margin:8px 0 0;padding-left:18px;">${fails.map(f=>`<li><span class="mono">${escapeHtml(f.key||'')}</span> — ${escapeHtml(f.error||'')}</li>`).join('')}</ul></div>` : `<div class="note-box" style="margin-bottom:14px;">Last error: <span class="mono">${escapeHtml(ConnectionState.lastError || 'unknown')}</span></div>`}
       <button class="btn btn-gold btn-block" data-action="retry-load">Try Again</button>
+      <details style="margin-top:18px;">
+        <summary style="cursor:pointer;font-weight:600;font-size:13.5px;">If "Try Again" keeps failing: recover from a backup file</summary>
+        <div style="margin-top:12px;">
+          <div class="banner banner-info" style="margin-bottom:12px;">This replaces the shared data for <b>everyone</b> with what's in the backup file. Anything entered after that backup was taken will not be in it. Use it only if the damaged data can't be recovered another way (e.g. Google Sheets Version History).</div>
+          <div class="field"><label>Backup file (.json)</label><input type="file" id="emergencyRestoreFile" accept=".json"></div>
+          <button type="button" class="btn btn-danger btn-block" data-action="emergency-restore">Restore From This Backup</button>
+          <div id="emergencyRestoreStatus" style="margin-top:10px;font-size:13px;color:var(--text-muted);"></div>
+        </div>
+      </details>
     </div>
   </div>`;
 }
@@ -1026,6 +1021,40 @@ function bindLoadError(){
     render();
     await seedIfNeeded();
     render();
+  });
+  const restoreBtn = document.querySelector('[data-action="emergency-restore"]');
+  if(restoreBtn) restoreBtn.addEventListener('click', async ()=>{
+    const file = document.getElementById('emergencyRestoreFile').files[0];
+    const status = document.getElementById('emergencyRestoreStatus');
+    if(!file){ alert('Choose a backup .json file first.'); return; }
+    let backup;
+    try{
+      backup = JSON.parse(await file.text());
+      if(!backup.data || !backup.data[K.users]) throw new Error('not a backup');
+    }catch(err){ alert('Could not read that file — make sure it is a backup .json downloaded from this app.'); return; }
+    const when = backup.exportedAt ? new Date(backup.exportedAt).toLocaleString() : 'unknown date';
+    if(prompt(`This will REPLACE the shared data for EVERYONE with the backup from ${when} (by ${backup.exportedBy||'unknown'}).\n\nType RESTORE to confirm:`) !== 'RESTORE') return;
+    restoreBtn.disabled = true;
+    const items = [
+      [K.users, backup.data[K.users]||[]], [K.accounts, backup.data[K.accounts]||[]],
+      [K.settings, backup.data[K.settings]], [K.transactions, backup.data[K.transactions]||[]],
+      [K.batches, backup.data[K.batches]||[]], [K.cashCounts, backup.data[K.cashCounts]||[]],
+      [K.reimbursements, backup.data[K.reimbursements]||[]], [K.audit, backup.data[K.audit]||[]],
+    ].filter(([k,v])=>v!==undefined && v!==null);
+    const failed = [];
+    for(let i=0;i<items.length;i++){
+      status.textContent = `Restoring ${i+1} of ${items.length}… please keep this page open.`;
+      const ok = await storeSet(items[i][0], items[i][1]);
+      if(!ok) failed.push(items[i][0]);
+    }
+    if(failed.length){
+      status.textContent = '';
+      restoreBtn.disabled = false;
+      alert(`⚠️ These could not be confirmed as saved: ${failed.join(', ')}. Please try the restore again.`);
+      return;
+    }
+    alert('Backup restored. The page will now reload.');
+    window.location.reload();
   });
 }
 
