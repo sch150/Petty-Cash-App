@@ -721,6 +721,9 @@ async function seedIfNeeded(){
   State.batches = batches.value || [];
   State.cashCounts = cashCounts.value || [];
   State.reimbursements = reimbursements.value || [];
+  // Recalculate batch counts/totals from the transactions themselves (in memory)
+  // so totals inflated by earlier versions display correctly right away.
+  State.batches.forEach(b=>{ const s = batchStats(b.batchNumber); b.numTransactions = s.count; b.totalAmount = s.total; });
   State.loadState = 'ok';
   State.loaded = true;
 }
@@ -772,8 +775,11 @@ async function nextNumber(kind){
 }
 
 /* ---------------- batch helpers ---------------- */
+function isExpenseTxn(t){ return t.type!=='REIMBURSEMENT' && t.type!=='BALANCE_RESET'; }
 function batchStats(batchNumber){
-  const txns = State.transactions.filter(t=>t.batchNumber===batchNumber && t.status!=='VOIDED');
+  // Only real expenses count toward a batch — the Cash-on-Hand and Reimbursement
+  // lines tagged to a batch are cash movements, not spending.
+  const txns = State.transactions.filter(t=>t.batchNumber===batchNumber && t.status!=='VOIDED' && isExpenseTxn(t));
   const total = txns.reduce((s,t)=>s+Number(t.amount||0),0);
   return {count:txns.length, total};
 }
@@ -791,7 +797,7 @@ async function setBatchStatus(batchNumber, newStatus){
   if(!b) return;
   const old = b.status;
   b.status = newStatus;
-  State.transactions.forEach(t=>{ if(t.batchNumber===batchNumber && t.status!=='VOIDED') t.status = newStatus; });
+  State.transactions.forEach(t=>{ if(t.batchNumber===batchNumber && t.status!=='VOIDED' && isExpenseTxn(t)) t.status = newStatus; });
   await storeSet(K.batches, State.batches);
   await storeSet(K.transactions, State.transactions);
   await logAudit('Batch status changed', old, newStatus, `Batch ${batchNumber}`);
@@ -799,7 +805,7 @@ async function setBatchStatus(batchNumber, newStatus){
 function groupByAccount(txns){
   const map = {};
   txns.forEach(t=>{
-    if(t.status==='VOIDED') return;
+    if(t.status==='VOIDED' || !isExpenseTxn(t)) return;
     if(!map[t.accountCode]) map[t.accountCode] = {code:t.accountCode, name:t.accountName, amount:0};
     map[t.accountCode].amount += Number(t.amount||0);
   });
@@ -3037,7 +3043,11 @@ function renderBalanceResetModal(){
 }
 function renderStartNewBatchModal(){
   const today = new Date().toISOString().slice(0,10);
-  const priorBatches = State.batches.slice().sort((a,b)=>(b.createdAt||b.batchDate||'').localeCompare(a.createdAt||a.batchDate||''));
+  const priorBatches = State.batches.slice().sort((a,b)=>b.batchNumber.localeCompare(a.batchNumber, undefined, {numeric:true}));
+  const carried = Math.round(computeLedger().currentBalance * 100) / 100;
+  const floatAmt = Number(State.settings.pettyCash.approvedFloat) || 0;
+  const suggested = Math.max(0, Math.round((floatAmt - carried) * 100) / 100);
+  const current = activeBatch() ? activeBatch().batchNumber : (priorBatches[0] ? priorBatches[0].batchNumber : '');
   return `
   <div class="modal-overlay" data-close-modal>
     <div class="modal" data-stop style="max-width:560px;">
@@ -3045,24 +3055,25 @@ function renderStartNewBatchModal(){
         <h3>Start New Batch</h3>
         <button class="modal-close" data-close-modal>&times;</button>
       </div>
-      <form id="startNewBatchForm">
+      <form id="startNewBatchForm" data-float="${floatAmt}">
         <div class="modal-body">
-          <div class="note-box" style="margin-bottom:14px;">A new batch number will be auto-assigned. Enter what's physically in the cash box now, and — if applicable — the reimbursement that just came in for the previous batch. Both become the new batch's starting point.</div>
+          <div class="note-box" style="margin-bottom:14px;">A new batch number is auto-assigned. Cash on Hand starts as the balance carried from the previous batch (${fmtGHS(carried)}) — change it if your physical count differs. The Reimbursement below is pre-filled with what's needed to bring the float back to ${fmtGHS(floatAmt)}.</div>
 
           <div class="field"><label>Date</label><input type="date" name="date" value="${today}" required></div>
 
           <div class="field"><label>Cash on Hand right now (GHS) — required</label>
-            <input type="number" step="0.01" min="0" name="cashOnHand" required>
-            <div class="hint">The actual counted cash sitting in the box before any reimbursement is added.</div>
+            <input type="number" step="0.01" min="0" name="cashOnHand" value="${carried}" required>
+            <div class="hint">Carried balance from the ledger. Overwrite with your physical count if it differs.</div>
           </div>
 
           <div class="field"><label>Reimbursement Received (GHS) — leave 0 if none yet</label>
-            <input type="number" step="0.01" min="0" name="reimbAmount" value="0">
+            <input type="number" step="0.01" min="0" name="reimbAmount" value="${suggested}">
+            <div class="hint" id="reimbHint">Cash on Hand ${fmtGHS(carried)} + Reimbursement ${fmtGHS(suggested)} = <b>${fmtGHS(carried+suggested)}</b> opening balance.</div>
           </div>
           <div class="field"><label>This reimbursement is for which previous batch?</label>
             <select name="previousBatch">
               <option value="">— None / not applicable —</option>
-              ${priorBatches.map(b=>`<option value="${escapeAttr(b.batchNumber)}">${escapeHtml(b.batchNumber)}</option>`).join('')}
+              ${priorBatches.map(b=>`<option value="${escapeAttr(b.batchNumber)}" ${b.batchNumber===current?'selected':''}>${escapeHtml(b.batchNumber)}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -3300,6 +3311,21 @@ function bindShell(){
   }));
   const startNewBatchForm = document.getElementById('startNewBatchForm');
   if(startNewBatchForm){
+    // Keep the suggested reimbursement in step with Cash on Hand until the person edits it themselves
+    const cohInput = startNewBatchForm.querySelector('[name="cashOnHand"]');
+    const reimbInput = startNewBatchForm.querySelector('[name="reimbAmount"]');
+    const hint = document.getElementById('reimbHint');
+    const floatAmt = Number(startNewBatchForm.dataset.float)||0;
+    let reimbEdited = false;
+    const refreshHint = ()=>{
+      const c = Number(cohInput.value)||0, r = Number(reimbInput.value)||0;
+      if(hint) hint.innerHTML = `Cash on Hand ${fmtGHS(c)} + Reimbursement ${fmtGHS(r)} = <b>${fmtGHS(c+r)}</b> opening balance.`;
+    };
+    reimbInput.addEventListener('input', ()=>{ reimbEdited = true; refreshHint(); });
+    cohInput.addEventListener('input', ()=>{
+      if(!reimbEdited) reimbInput.value = Math.max(0, Math.round((floatAmt - (Number(cohInput.value)||0))*100)/100);
+      refreshHint();
+    });
     startNewBatchForm.addEventListener('submit', async (e)=>{
       e.preventDefault();
       const fd = new FormData(startNewBatchForm);
@@ -3611,12 +3637,12 @@ function bindShell(){
     const batch = State.batches.find(x=>x.batchNumber===bn);
     if(!batch) return;
     if(batchLockedByReimbursement(bn)){ alert('This batch can no longer be cleared — its reimbursement has already been paid.'); return; }
-    const count = State.transactions.filter(t=>t.batchNumber===bn).length;
-    const confirmText = prompt(`This permanently removes all ${count} transaction(s) currently in ${bn}, so you can upload a corrected list. This cannot be undone.\n\nType CLEAR to confirm:`);
+    const count = State.transactions.filter(t=>t.batchNumber===bn && isExpenseTxn(t)).length;
+    const confirmText = prompt(`This permanently removes all ${count} expense transaction(s) currently in ${bn} (its Cash on Hand and Reimbursement lines are kept), so you can upload a corrected list. This cannot be undone.\n\nType CLEAR to confirm:`);
     if(confirmText !== 'CLEAR') return;
 
     const before = State.transactions;
-    State.transactions = State.transactions.filter(t=>t.batchNumber!==bn);
+    State.transactions = State.transactions.filter(t=>!(t.batchNumber===bn && isExpenseTxn(t)));
     batch.numTransactions = 0;
     batch.totalAmount = 0;
     const ok1 = await storeSet(K.transactions, State.transactions);
